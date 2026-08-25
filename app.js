@@ -152,6 +152,7 @@ function addText() {
   input.value = "";
   render();
   say("I've updated the shop.");
+  document.getElementById("shop").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function addMeal(key) {
@@ -164,11 +165,10 @@ function render() {
   const list = document.getElementById("itemsList");
   const empty = document.getElementById("emptyState");
   list.innerHTML = "";
-  empty.style.display = state.items.length ? "none" : "block";
+  empty.style.display = state.items.length ? "none" : "flex";
 
   state.items.forEach(item => {
     const tpl = document.getElementById("itemTemplate").content.cloneNode(true);
-    const row = tpl.querySelector(".item-row");
     const name = tpl.querySelector(".item-name");
     const qty = tpl.querySelector(".item-qty");
     const meta = tpl.querySelector(".item-meta");
@@ -215,7 +215,7 @@ function renderBasket() {
   const out = document.getElementById("basketResults");
   out.innerHTML = "";
   if (!state.items.length) {
-    out.innerHTML = '<div class="empty-state">Add some groceries to compare baskets.</div>';
+    out.innerHTML = '<div class="empty-state"><strong>No basket yet.</strong><span>Add groceries and David will compare the demo retailers.</span></div>';
     return;
   }
 
@@ -288,6 +288,12 @@ function say(text) {
   window.speechSynthesis.speak(utter);
 }
 
+function setMicListening(isListening) {
+  const micBtn = document.getElementById("micBtn");
+  micBtn.classList.toggle("is-listening", isListening);
+  micBtn.setAttribute("aria-label", isListening ? "David is listening" : "Speak to David");
+}
+
 function setupVoiceInput() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const micBtn = document.getElementById("micBtn");
@@ -295,7 +301,7 @@ function setupVoiceInput() {
 
   if (!SpeechRecognition) {
     micBtn.disabled = true;
-    status.textContent = "Voice dictation isn’t available in this browser. Type your list instead.";
+    status.textContent = "Voice isn’t available in this browser. Type instead.";
     return;
   }
 
@@ -307,30 +313,31 @@ function setupVoiceInput() {
   micBtn.addEventListener("click", () => recognition.start());
   recognition.onstart = () => {
     status.textContent = "Listening…";
-    micBtn.textContent = "Listening…";
+    setMicListening(true);
   };
   recognition.onresult = event => {
     const transcript = event.results[0][0].transcript;
     document.getElementById("groceryInput").value = transcript;
     status.textContent = `Heard: “${transcript}”`;
-    micBtn.textContent = "🎙 Speak";
   };
   recognition.onerror = () => {
-    status.textContent = "I couldn’t catch that. Try again or type it.";
-    micBtn.textContent = "🎙 Speak";
+    status.textContent = "Didn’t catch that. Try again or type it.";
+    setMicListening(false);
   };
-  recognition.onend = () => {
-    if (micBtn.textContent === "Listening…") micBtn.textContent = "🎙 Speak";
-  };
+  recognition.onend = () => setMicListening(false);
 }
 
 document.getElementById("addBtn").addEventListener("click", addText);
+document.getElementById("groceryInput").addEventListener("keydown", event => {
+  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") addText();
+});
 document.getElementById("clearBtn").addEventListener("click", () => { state.items = []; render(); });
 document.querySelectorAll("[data-meal]").forEach(btn => btn.addEventListener("click", () => addMeal(btn.dataset.meal)));
 document.getElementById("voiceToggle").addEventListener("click", e => {
   state.voiceOn = !state.voiceOn;
   e.currentTarget.setAttribute("aria-pressed", String(state.voiceOn));
-  e.currentTarget.textContent = state.voiceOn ? "🔊 David voice on" : "🔇 David voice off";
+  const label = e.currentTarget.querySelector(".voice-label");
+  if (label) label.textContent = state.voiceOn ? "David voice on" : "David voice off";
   if (state.voiceOn) say("David voice is on.");
 });
 
