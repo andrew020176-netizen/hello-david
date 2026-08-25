@@ -7,6 +7,20 @@
 
   if (!itemsList || !inputActions) return;
 
+  // Voice-first UI: the old typing/transcript controls have finished their setup
+  // by the time this file runs, so remove them from the visible product surface.
+  ["voiceToggle", "addBtn", "groceryInput", "speechStatus"].forEach(id => {
+    document.getElementById(id)?.remove();
+  });
+
+  const micBtn = document.getElementById("micBtn");
+  if (micBtn) {
+    micBtn.style.minWidth = "170px";
+    micBtn.style.minHeight = "52px";
+    micBtn.style.fontSize = "18px";
+    micBtn.style.fontWeight = "700";
+  }
+
   const shareBtn = document.createElement("button");
   shareBtn.id = "shareShopBtn";
   shareBtn.className = "secondary-btn";
@@ -36,9 +50,8 @@
       .map(row => {
         const meta = row.querySelector(".item-meta")?.textContent || "";
         const first = meta.split("·")[0]?.trim() || "";
-        const unit = /^(pack|packet|carton|bag|bottle|tin|can|box|kg|g|grams?|litres?|liters?|litre|liter|l|ml|fillets?|heads?|bunch(?:es)?|items?)$/i.test(first)
-          ? first
-          : "";
+        const isSource = /^(David|Shared shop|Voice|Voice \/ typed|Salmon \+ greens|Burgers|Chicken fajitas)/i.test(first);
+        const unit = first && !isSource ? first : "";
         return {
           name: row.querySelector(".item-name")?.value?.trim() || "",
           qty: Number(row.querySelector(".item-qty")?.value || 1),
