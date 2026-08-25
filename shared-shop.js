@@ -1,5 +1,5 @@
 (() => {
-  const ENDPOINT = "https://oobquipkeobfnotyynjr.supabase.co/functions/v1/hello-david-shared-shop";
+  const ENDPOINT = "https://wfhgyunfvdyxwtggntpc.supabase.co/functions/v1/hello-david-shared-shop";
   const TOKEN_KEY = "helloDavid.sharedShopToken.v1";
   const itemsList = document.getElementById("itemsList");
   const inputActions = document.querySelector(".input-actions");
