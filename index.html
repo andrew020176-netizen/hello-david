@@ -88,14 +88,25 @@
     </div>
   </template>
 
-  <!-- Legacy prototype speech recognition is deliberately disabled. The only
-       microphone path is MediaRecorder -> Supabase -> OpenAI. -->
+  <!-- Legacy browser speech recognition stays disabled. -->
   <script>
     try { Object.defineProperty(window, 'SpeechRecognition', { value: undefined, configurable: true }); } catch (_) { window.SpeechRecognition = undefined; }
     try { Object.defineProperty(window, 'webkitSpeechRecognition', { value: undefined, configurable: true }); } catch (_) { window.webkitSpeechRecognition = undefined; }
+
+    // Temporary compatibility bridge: route the existing recorder to the
+    // dedicated Hello David Supabase project without changing recorder logic.
+    (() => {
+      const oldAudioEndpoint = 'https://oobquipkeobfnotyynjr.supabase.co/functions/v1/hello-david-process-audio';
+      const newAudioEndpoint = 'https://wfhgyunfvdyxwtggntpc.supabase.co/functions/v1/hello-david-process-audio';
+      const nativeFetch = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        if (typeof input === 'string' && input === oldAudioEndpoint) input = newAudioEndpoint;
+        return nativeFetch(input, init);
+      };
+    })();
   </script>
   <script src="app.js?v=3"></script>
-  <script src="audio-recorder.js?v=4"></script>
+  <script src="audio-recorder.js?v=5"></script>
   <script src="shared-shop.js?v=1"></script>
 </body>
 </html>
