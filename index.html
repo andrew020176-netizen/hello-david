@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hello David</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">HELLO DAVID</div>
+        <h1>Your shop, sorted.</h1>
+        <p class="sub">Tell David what you need. He’ll turn it into a clean list and compare the basket.</p>
+      </div>
+      <button id="voiceToggle" class="voice-toggle" aria-pressed="true">🔊 David voice on</button>
+    </header>
+
+    <section class="panel hero-panel">
+      <div class="assistant-row">
+        <div class="avatar">D</div>
+        <div>
+          <div class="assistant-name">David</div>
+          <div class="assistant-copy">Walk around and tell me what we need.</div>
+        </div>
+      </div>
+
+      <div class="input-wrap">
+        <textarea id="groceryInput" rows="4" placeholder="e.g. Six salmon fillets, two cartons of vegetable stock, milk, Weet-Bix and bananas. We still have plenty of garlic."></textarea>
+        <div class="input-actions">
+          <button id="micBtn" class="primary-btn">🎙 Speak</button>
+          <button id="addBtn" class="secondary-btn">Add to shop</button>
+        </div>
+        <div id="speechStatus" class="hint">Voice dictation uses your browser. You can type instead at any time.</div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">HOUSEHOLD NEED</div>
+            <h2>This week’s shop</h2>
+          </div>
+          <button id="clearBtn" class="text-btn">Clear</button>
+        </div>
+        <div id="emptyState" class="empty-state">Nothing added yet.</div>
+        <div id="itemsList" class="items-list"></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">COMPARE</div>
+            <h2>Best basket</h2>
+          </div>
+        </div>
+        <div class="notice">Demo catalogue data for prototype only — live retailer pricing comes next.</div>
+        <div id="basketResults" class="basket-results"></div>
+      </section>
+    </section>
+
+    <section class="panel meal-panel">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">MEALS</div>
+          <h2>Add a dinner</h2>
+          <p class="sub small">Prototype recipes show how David can add ingredients without duplicating what’s already in the shop.</p>
+        </div>
+      </div>
+      <div class="meal-buttons">
+        <button data-meal="salmon" class="meal-btn">Salmon + greens</button>
+        <button data-meal="burgers" class="meal-btn">Burgers</button>
+        <button data-meal="fajitas" class="meal-btn">Chicken fajitas</button>
+      </div>
+    </section>
+  </main>
+
+  <template id="itemTemplate">
+    <div class="item-row">
+      <div class="item-main">
+        <input class="item-name" />
+        <div class="item-meta"></div>
+      </div>
+      <input class="item-qty" type="number" min="0.1" step="0.1" />
+      <button class="remove-btn" aria-label="Remove item">×</button>
+    </div>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
