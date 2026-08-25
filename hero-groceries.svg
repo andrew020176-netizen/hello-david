@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 620" role="img" aria-labelledby="title desc">
+<title id="title">Hello David grocery bag</title>
+<desc id="desc">A purple reusable grocery bag filled with bread, leafy greens, milk, oats and a lemon.</desc>
+<defs>
+  <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%">
+    <feDropShadow dx="10" dy="14" stdDeviation="10" flood-color="#111111" flood-opacity=".22"/>
+  </filter>
+</defs>
+<ellipse cx="312" cy="555" rx="215" ry="31" fill="#111111" opacity=".18"/>
+<g filter="url(#shadow)">
+  <path d="M185 214c14-88 70-139 126-139 62 0 116 50 130 139" fill="none" stroke="#7768D4" stroke-width="18" stroke-linecap="round"/>
+  <g>
+    <path d="M128 238c-31-67-19-123 18-139 36-16 76 22 91 88 9 41 3 82-17 108z" fill="#59FFA0" stroke="#111" stroke-width="5"/>
+    <path d="M151 123c24 28 40 70 46 126" fill="none" stroke="#248E57" stroke-width="5" stroke-linecap="round"/>
+    <path d="M190 191c14-66 42-133 71-163 19-19 43-4 41 22-4 63-19 133-42 186z" fill="#D69E63" stroke="#111" stroke-width="5"/>
+    <path d="M210 171c30-18 51-23 74-24" fill="none" stroke="#9A6331" stroke-width="4"/>
+    <g transform="translate(282 84)">
+      <path d="M20 44h77l15 168H6z" fill="#FDFFF7" stroke="#111" stroke-width="5"/>
+      <path d="M32 5h52l8 39H24z" fill="#D7E7FF" stroke="#111" stroke-width="5"/>
+      <rect x="30" y="76" width="58" height="55" rx="8" fill="#B4ADEA"/>
+      <text x="59" y="99" text-anchor="middle" font-family="Arial, sans-serif" font-size="17" font-weight="900" fill="#111">MILK</text>
+      <text x="59" y="119" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#111">FULL CREAM</text>
+    </g>
+    <g transform="translate(390 106) rotate(6)">
+      <rect x="0" y="0" width="102" height="164" rx="6" fill="#EE91AD" stroke="#111" stroke-width="5"/>
+      <rect x="13" y="18" width="76" height="28" rx="14" fill="#FFED65"/>
+      <text x="51" y="76" text-anchor="middle" font-family="Arial, sans-serif" font-size="29" font-weight="900" fill="#111">OATS</text>
+      <text x="51" y="100" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" font-weight="800" fill="#111">THE GOOD STUFF</text>
+      <path d="M19 126h63" stroke="#111" stroke-width="5" stroke-linecap="round"/>
+    </g>
+    <circle cx="471" cy="251" r="35" fill="#FFED65" stroke="#111" stroke-width="5"/>
+    <path d="M465 215c7-18 19-26 33-27" fill="none" stroke="#248E57" stroke-width="6" stroke-linecap="round"/>
+  </g>
+  <path d="M118 240h388l-27 310H150z" fill="#9484E4" stroke="#111" stroke-width="6"/>
+  <path d="M446 240h60l-27 310h-49z" fill="#806ED8" opacity=".65"/>
+  <path d="M119 240h387" stroke="#D9D3FF" stroke-width="8"/>
+  <text x="181" y="337" font-family="Arial, sans-serif" font-size="52" font-weight="900" fill="#111">Sorted</text>
+  <text x="181" y="388" font-family="Arial, sans-serif" font-size="52" font-weight="900" fill="#111">saves time.</text>
+  <text x="181" y="465" font-family="Arial, sans-serif" font-size="38" font-weight="900" fill="#111">Time is</text>
+  <text x="181" y="511" font-family="Arial, sans-serif" font-size="48" font-weight="900" fill="#FFED65">tasty.</text>
+  <path d="M181 525h125" stroke="#FFED65" stroke-width="8" stroke-linecap="round"/>
+</g>
+</svg>
