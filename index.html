@@ -3,79 +3,137 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Hello David</title>
+  <meta name="theme-color" content="#B4ADEA" />
+  <title>Hello David — You tell me. I sort the shop.</title>
+  <meta name="description" content="Tell David what your household needs. He builds the shop, adds dinner ingredients and compares the basket." />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <main class="shell">
-    <header class="topbar">
-      <div>
-        <div class="eyebrow">HELLO DAVID</div>
-        <h1>Your shop, sorted.</h1>
-        <p class="sub">Tell David what you need. He’ll turn it into a clean list and compare the basket.</p>
-      </div>
-      <button id="voiceToggle" class="voice-toggle" aria-pressed="true">🔊 David voice on</button>
-    </header>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="Hello David home">
+      <span class="brand-hello">hello</span>
+      <span class="brand-david">david</span>
+    </a>
 
-    <section class="panel hero-panel">
-      <div class="assistant-row">
-        <div class="avatar">D</div>
-        <div>
-          <div class="assistant-name">David</div>
-          <div class="assistant-copy">Walk around and tell me what we need.</div>
+    <nav class="main-nav" aria-label="Main navigation">
+      <a href="#shop">The shop</a>
+      <a href="#compare">Best basket</a>
+      <a href="#dinner">Dinner</a>
+    </nav>
+
+    <button id="voiceToggle" class="voice-toggle" aria-pressed="true">
+      <span class="voice-bars" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="voice-label">David voice on</span>
+    </button>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="hero-copy">
+        <div class="hero-kicker">THE HOUSEHOLD SHOPPING AGENT</div>
+        <h1>
+          <span>YOU TELL ME.</span>
+          <span class="accent-line">I SORT THE SHOP.</span>
+        </h1>
+
+        <p class="hero-sub">Milk. Dinner. The stuff you forgot.<br><strong>David’s on it.</strong></p>
+
+        <div class="shop-input" aria-label="Tell David what you need">
+          <button id="micBtn" class="mic-btn" type="button" aria-label="Speak to David">
+            <span class="mic-icon" aria-hidden="true"></span>
+          </button>
+          <textarea id="groceryInput" rows="2" placeholder="e.g. Six salmon fillets, two cartons of vegetable stock, milk, Weet-Bix and bananas. We still have plenty of garlic."></textarea>
+          <button id="addBtn" class="go-btn" type="button" aria-label="Add to shop">→</button>
         </div>
+        <div id="speechStatus" class="speech-status">Talk or type. David listens.</div>
       </div>
 
-      <div class="input-wrap">
-        <textarea id="groceryInput" rows="4" placeholder="e.g. Six salmon fillets, two cartons of vegetable stock, milk, Weet-Bix and bananas. We still have plenty of garlic."></textarea>
-        <div class="input-actions">
-          <button id="micBtn" class="primary-btn">🎙 Speak</button>
-          <button id="addBtn" class="secondary-btn">Add to shop</button>
+      <aside class="hero-art" aria-label="Hello David shopping promise">
+        <div class="yellow-slab"></div>
+        <div class="bag-wrap" aria-hidden="true">
+          <div class="bag-handle"></div>
+          <div class="bag-groceries">
+            <span class="grocer grocer-one"></span>
+            <span class="grocer grocer-two"></span>
+            <span class="grocer grocer-three"></span>
+            <span class="grocer grocer-four"></span>
+          </div>
+          <div class="shopping-bag">
+            <p>Sorted<br>saves<br>time.</p>
+            <strong>Time is<br><em>tasty.</em></strong>
+          </div>
         </div>
-        <div id="speechStatus" class="hint">Voice dictation uses your browser. You can type instead at any time.</div>
-      </div>
+        <div class="price-badge">
+          <span class="badge-heart">♡</span>
+          <strong>Better choices.<br>Better prices.</strong>
+          <small>David compares the basket so you don’t have to.</small>
+        </div>
+      </aside>
     </section>
 
-    <section class="grid">
-      <section class="panel">
-        <div class="section-head">
+    <section class="promise-strip" aria-label="What David does">
+      <div><span>01</span><strong>You say it.</strong><small>Walk around the house. Talk normally.</small></div>
+      <div><span>02</span><strong>David sorts it.</strong><small>Needs, meals and duplicates become one shop.</small></div>
+      <div><span>03</span><strong>Then compares it.</strong><small>See the best basket before you buy.</small></div>
+    </section>
+
+    <section class="workspace">
+      <section id="shop" class="work-card shop-card">
+        <div class="card-top">
           <div>
-            <div class="eyebrow">HOUSEHOLD NEED</div>
+            <div class="card-number">01 / THIS WEEK</div>
             <h2>This week’s shop</h2>
           </div>
-          <button id="clearBtn" class="text-btn">Clear</button>
+          <button id="clearBtn" class="clear-btn" type="button">Clear</button>
         </div>
-        <div id="emptyState" class="empty-state">Nothing added yet.</div>
+        <div id="emptyState" class="empty-state">
+          <strong>Nothing added yet.</strong>
+          <span>Tell David what’s missing and he’ll build it here.</span>
+        </div>
         <div id="itemsList" class="items-list"></div>
       </section>
 
-      <section class="panel">
-        <div class="section-head">
+      <section id="compare" class="work-card basket-panel">
+        <div class="card-top">
           <div>
-            <div class="eyebrow">COMPARE</div>
+            <div class="card-number">02 / COMPARE</div>
             <h2>Best basket</h2>
           </div>
+          <div class="best-mark">BEST.</div>
         </div>
-        <div class="notice">Demo catalogue data for prototype only — live retailer pricing comes next.</div>
+        <div class="notice">Prototype catalogue today. Live retailer pricing is the next build.</div>
         <div id="basketResults" class="basket-results"></div>
       </section>
-    </section>
 
-    <section class="panel meal-panel">
-      <div class="section-head">
-        <div>
-          <div class="eyebrow">MEALS</div>
-          <h2>Add a dinner</h2>
-          <p class="sub small">Prototype recipes show how David can add ingredients without duplicating what’s already in the shop.</p>
+      <section class="statement-card">
+        <div class="statement-label">WHY DAVID?</div>
+        <p>LESS FAFF.<br><span>MORE FAMILY.</span></p>
+        <small>One household brain. Not another shopping list.</small>
+      </section>
+
+      <section id="dinner" class="work-card meal-panel">
+        <div class="card-top dinner-head">
+          <div>
+            <div class="card-number">03 / DINNER</div>
+            <h2>Dinner, sorted?</h2>
+            <p>Pick something. David adds what you need without duplicating what’s already in the shop.</p>
+          </div>
         </div>
-      </div>
-      <div class="meal-buttons">
-        <button data-meal="salmon" class="meal-btn">Salmon + greens</button>
-        <button data-meal="burgers" class="meal-btn">Burgers</button>
-        <button data-meal="fajitas" class="meal-btn">Chicken fajitas</button>
-      </div>
+        <div class="meal-buttons">
+          <button data-meal="salmon" class="meal-btn" type="button"><span>Salmon + greens</span><b>→</b></button>
+          <button data-meal="burgers" class="meal-btn" type="button"><span>Burgers</span><b>→</b></button>
+          <button data-meal="fajitas" class="meal-btn" type="button"><span>Chicken fajitas</span><b>→</b></button>
+        </div>
+      </section>
     </section>
   </main>
+
+  <footer class="site-footer">
+    <div><strong>PRIVATE &amp; SECURE</strong><span>Your household data is yours.</span></div>
+    <div><strong>NO SPAM. EVER.</strong><span>We hate spam too.</span></div>
+    <div><strong>MADE FOR BUSY FAMILIES</strong><span>By people who get it.</span></div>
+    <div class="footer-signoff">hello<span>david</span></div>
+  </footer>
 
   <template id="itemTemplate">
     <div class="item-row">
@@ -83,8 +141,8 @@
         <input class="item-name" />
         <div class="item-meta"></div>
       </div>
-      <input class="item-qty" type="number" min="0.1" step="0.1" />
-      <button class="remove-btn" aria-label="Remove item">×</button>
+      <input class="item-qty" type="number" min="0.1" step="0.1" aria-label="Quantity" />
+      <button class="remove-btn" type="button" aria-label="Remove item">×</button>
     </div>
   </template>
 
