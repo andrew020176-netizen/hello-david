@@ -88,7 +88,13 @@
     </div>
   </template>
 
-  <script src="app.js"></script>
-  <script src="audio-recorder.js"></script>
+  <!-- Legacy prototype speech recognition is deliberately disabled. The only
+       microphone path is MediaRecorder -> Supabase -> OpenAI. -->
+  <script>
+    try { Object.defineProperty(window, 'SpeechRecognition', { value: undefined, configurable: true }); } catch (_) { window.SpeechRecognition = undefined; }
+    try { Object.defineProperty(window, 'webkitSpeechRecognition', { value: undefined, configurable: true }); } catch (_) { window.webkitSpeechRecognition = undefined; }
+  </script>
+  <script src="app.js?v=3"></script>
+  <script src="audio-recorder.js?v=3"></script>
 </body>
 </html>
