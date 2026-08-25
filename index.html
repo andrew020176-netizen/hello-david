@@ -31,17 +31,11 @@
     <section class="hero">
       <div class="hero-copy">
         <div class="hero-kicker">THE HOUSEHOLD SHOPPING AGENT</div>
-        <h1>
-          <span>YOU TELL ME.</span>
-          <span class="accent-line">I SORT THE SHOP.</span>
-        </h1>
-
+        <h1><span>YOU TELL ME.</span><span class="accent-line">I SORT THE SHOP.</span></h1>
         <p class="hero-sub">Milk. Dinner. The stuff you forgot.<br><strong>David’s on it.</strong></p>
 
         <div class="shop-input" aria-label="Tell David what you need">
-          <button id="micBtn" class="mic-btn" type="button" aria-label="Speak to David">
-            <span class="mic-icon" aria-hidden="true"></span>
-          </button>
+          <button id="micBtn" class="mic-btn" type="button" aria-label="Speak to David"><span class="mic-icon" aria-hidden="true"></span></button>
           <textarea id="groceryInput" rows="2" placeholder="e.g. Six salmon fillets, two cartons of vegetable stock, milk, Weet-Bix and bananas. We still have plenty of garlic."></textarea>
           <button id="addBtn" class="go-btn" type="button" aria-label="Add to shop">→</button>
         </div>
@@ -49,20 +43,8 @@
       </div>
 
       <aside class="hero-art" aria-label="Hello David shopping promise">
-        <div class="yellow-slab"></div>
-        <div class="bag-wrap" aria-hidden="true">
-          <div class="bag-handle"></div>
-          <div class="bag-groceries">
-            <span class="grocer grocer-one"></span>
-            <span class="grocer grocer-two"></span>
-            <span class="grocer grocer-three"></span>
-            <span class="grocer grocer-four"></span>
-          </div>
-          <div class="shopping-bag">
-            <p>Sorted<br>saves<br>time.</p>
-            <strong>Time is<br><em>tasty.</em></strong>
-          </div>
-        </div>
+        <div class="paint-swipe" aria-hidden="true"></div>
+        <img class="hero-bag" src="hero-groceries.svg" alt="Purple reusable grocery bag filled with everyday groceries" />
         <div class="price-badge">
           <span class="badge-heart">♡</span>
           <strong>Better choices.<br>Better prices.</strong>
@@ -77,48 +59,35 @@
       <div><span>03</span><strong>Then compares it.</strong><small>See the best basket before you buy.</small></div>
     </section>
 
-    <section class="workspace">
-      <section id="shop" class="work-card shop-card">
+    <section class="dashboard">
+      <section id="shop" class="dash-card shop-card">
         <div class="card-top">
-          <div>
-            <div class="card-number">01 / THIS WEEK</div>
-            <h2>This week’s shop</h2>
-          </div>
+          <div><div class="card-number">01 / THIS WEEK</div><h2>This week’s shop</h2></div>
           <button id="clearBtn" class="clear-btn" type="button">Clear</button>
         </div>
-        <div id="emptyState" class="empty-state">
-          <strong>Nothing added yet.</strong>
-          <span>Tell David what’s missing and he’ll build it here.</span>
-        </div>
+        <div id="emptyState" class="empty-state"><strong>Nothing added yet.</strong><span>Tell David what’s missing and he’ll build it here.</span></div>
         <div id="itemsList" class="items-list"></div>
       </section>
 
-      <section id="compare" class="work-card basket-panel">
+      <section id="compare" class="dash-card basket-panel">
         <div class="card-top">
-          <div>
-            <div class="card-number">02 / COMPARE</div>
-            <h2>Best basket</h2>
-          </div>
+          <div><div class="card-number">02 / COMPARE</div><h2>Best basket</h2></div>
           <div class="best-mark">BEST.</div>
         </div>
         <div class="notice">Prototype catalogue today. Live retailer pricing is the next build.</div>
         <div id="basketResults" class="basket-results"></div>
       </section>
 
-      <section class="statement-card">
-        <div class="statement-label">WHY DAVID?</div>
-        <p>LESS FAFF.<br><span>MORE FAMILY.</span></p>
-        <small>One household brain. Not another shopping list.</small>
+      <section class="dash-card saving-card">
+        <div class="card-number">WHY DAVID?</div>
+        <div class="saving-big">LESS FAFF.<br><span>MORE FAMILY.</span></div>
+        <p>One household brain. Not another shopping list.</p>
       </section>
 
-      <section id="dinner" class="work-card meal-panel">
-        <div class="card-top dinner-head">
-          <div>
-            <div class="card-number">03 / DINNER</div>
-            <h2>Dinner, sorted?</h2>
-            <p>Pick something. David adds what you need without duplicating what’s already in the shop.</p>
-          </div>
-        </div>
+      <section id="dinner" class="dash-card dinner-card">
+        <div class="card-number">03 / DINNER</div>
+        <h2>Dinner, sorted?</h2>
+        <p>Pick something. David adds what you need without duplicating what’s already in the shop.</p>
         <div class="meal-buttons">
           <button data-meal="salmon" class="meal-btn" type="button"><span>Salmon + greens</span><b>→</b></button>
           <button data-meal="burgers" class="meal-btn" type="button"><span>Burgers</span><b>→</b></button>
@@ -137,10 +106,7 @@
 
   <template id="itemTemplate">
     <div class="item-row">
-      <div class="item-main">
-        <input class="item-name" />
-        <div class="item-meta"></div>
-      </div>
+      <div class="item-main"><input class="item-name" /><div class="item-meta"></div></div>
       <input class="item-qty" type="number" min="0.1" step="0.1" aria-label="Quantity" />
       <button class="remove-btn" type="button" aria-label="Remove item">×</button>
     </div>
