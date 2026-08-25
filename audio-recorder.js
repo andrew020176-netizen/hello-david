@@ -116,7 +116,6 @@
 
     const reply = result?.actions?.response || "Done — I've updated the shop.";
     setStatus(`Heard: “${result.transcript}” · ${reply}`);
-    if (typeof window.say === "function") window.say(reply);
   }
 
   async function startRecording() {
@@ -200,7 +199,6 @@
     }
   }
 
-  // Capture before the old browser-speech prototype handler.
   micBtn.addEventListener("click", event => {
     event.preventDefault();
     event.stopImmediatePropagation();
