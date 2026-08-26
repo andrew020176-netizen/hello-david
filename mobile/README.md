@@ -1,44 +1,46 @@
-# Hello David mobile transaction proof
+# Stuff the Shopping mobile
 
-This is the no-extension mobile proof for Hello David.
+Native Expo MVP for Stuff the Shopping.
 
-## What it proves
+## What it currently does
 
-1. Hello David runs inside a native mobile WebView.
-2. The existing voice shopping list remains the source of truth.
-3. `Send to Woolies` passes the structured list directly to the native shell.
-4. The same WebView opens Woolworths and keeps the Woolworths browser session/cookies.
-5. Hello David searches Woolworths products and adds confident matches to the cart.
-6. The user reviews and completes checkout in Woolworths. Hello David never submits payment.
+1. Captures a grocery list by voice.
+2. Keeps one household shopping list, with signed-in household sync through Supabase.
+3. Lets the user review, edit, remove and share items before sending anything to a retailer.
+4. Opens Woolworths in an embedded retailer session without storing the user's Woolworths password or payment details in Stuff.
+5. Searches Woolworths and only sends confident product matches to the cart.
+6. Applies saved shopping preferences to matching:
+   - **Best match** prioritises the strongest product match.
+   - **Cheapest suitable** picks the lowest-priced option from products that remain close enough to the strongest match.
+   - **Prefer specials** gives suitable on-special products a meaningful ranking boost.
+   - **Allow close alternatives** controls how wide the acceptable match set can be.
+7. Leaves final product review, checkout and payment entirely with Woolworths.
+
+Usual-brand learning is stored as a user preference but is not yet active in matching.
 
 ## Fast phone test with Expo Go
 
-The proof targets Expo SDK 54 because the current App Store / Play Store Expo Go build supports it.
+The app targets Expo SDK 54.
 
 On the laptop:
 
 ```bash
 cd mobile
 npm install
-npx expo start --tunnel --go
+npx expo start --lan --clear
 ```
 
-On the phone:
+Then scan the new QR code with Expo Go.
 
-1. Install **Expo Go** from the App Store or Google Play.
-2. Scan the QR code shown by Expo on the laptop.
-3. In the Hello David app, tap **Woolies** once and sign into Woolworths.
-4. Tap **David**, build a short shopping list by voice, then tap **Send to Woolies**.
-5. Review the resulting Woolworths cart carefully before checkout.
-
-## Safety rails in this proof
+## Safety rails
 
 - no checkout/payment automation
 - suspicious quantities are capped/defaulted
 - low-confidence product matches are skipped rather than guessed
-- two different Hello David lines cannot silently collapse into the same Woolworths stockcode
-- Woolworths credentials/cookies stay in the WebView; Hello David does not export them
+- two different list lines cannot silently collapse into the same Woolworths stockcode
+- Woolworths credentials/cookies remain in the retailer WebView
+- Stuff account and household data use Supabase authentication and row-level access controls
 
 ## Important
 
-This is a technical prototype using Woolworths website behaviour, not a retailer-approved public integration. Website endpoints and behaviour can change. Product matching and purchasing-unit intelligence need further refinement before any customer release.
+This is an MVP using Woolworths website behaviour, not a retailer-approved public integration. Website endpoints and behaviour can change before an official retailer integration is available.
