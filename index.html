@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Hello David</title>
-  <link rel="stylesheet" href="styles.css?v=3" />
+  <link rel="stylesheet" href="styles.css?v=4" />
 </head>
 <body>
   <main class="shell">
@@ -44,29 +44,17 @@
       </div>
     </section>
 
-    <section class="grid">
-      <section class="panel">
-        <div class="section-head">
-          <div>
-            <div class="eyebrow">HOUSEHOLD NEED</div>
-            <h2>This week’s shop</h2>
-          </div>
-          <button id="clearBtn" class="text-btn">Clear</button>
+    <section class="panel shop-panel">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">HOUSEHOLD NEED</div>
+          <h2>This week’s shop</h2>
+          <p class="sub small">Tell David what you need. He’ll make the product choices inside your supermarket when you send the shop.</p>
         </div>
-        <div id="emptyState" class="empty-state">Nothing added yet. Tap Speak and walk around the house.</div>
-        <div id="itemsList" class="items-list"></div>
-      </section>
-
-      <section class="panel">
-        <div class="section-head">
-          <div>
-            <div class="eyebrow">DAVID’S PICKS</div>
-            <h2 id="picksHeading">Ready for Woolworths</h2>
-          </div>
-        </div>
-        <div class="notice">Tell David what you need and he’ll choose sensible products, looking for specials and better value.</div>
-        <div id="basketResults" class="basket-results"></div>
-      </section>
+        <button id="clearBtn" class="text-btn">Clear</button>
+      </div>
+      <div id="emptyState" class="empty-state">Nothing added yet. Tap Speak and walk around the house.</div>
+      <div id="itemsList" class="items-list"></div>
     </section>
 
     <section class="panel meal-panel">
@@ -113,7 +101,6 @@
   <script src="app.js?v=4"></script>
   <script src="audio-recorder.js?v=6"></script>
   <script src="shared-shop.js?v=2"></script>
-  <script src="price-compare.js?v=3"></script>
-  <script src="woolies-handoff.js?v=3"></script>
+  <script src="woolies-handoff.js?v=4"></script>
 </body>
 </html>
