@@ -4,6 +4,7 @@ import { ActivityIndicator, Alert, Linking, SafeAreaView, ScrollView, Share, Sta
 import { WebView } from 'react-native-webview';
 import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from 'expo-audio';
 import { useStuffAuth } from './AuthContext';
+import regressionShop from './test-fixtures/regression-shop-v1.json';
 import {
   cancelStuffInvite,
   createStuffInvite,
@@ -652,6 +653,19 @@ export default function StuffApp() {
     }}]);
   }
 
+  function loadRegressionShop(){
+    const rows=(regressionShop?.expected_list||[]).map((x,idx)=>({
+      id:`regression-${idx+1}`,
+      name:String(x.name||'').trim(),
+      quantity:Number(x.quantity)||1,
+      unit:String(x.unit||'').trim(),
+    })).filter(x=>x.name);
+    Alert.alert('Load regression shop?',`Replace the current list with ${rows.length} test items? This is available only in development builds.`,[
+      {text:'Cancel',style:'cancel'},
+      {text:'Load test shop',onPress:()=>{setItems(rows);setOpen(true);setTab('home');setMoreView('main');setStatus('Regression shop loaded.')}}
+    ]);
+  }
+
   function reportProblem(){
     if(!user){Alert.alert('Sign in to contact support','Sign in or create a Stuff account so we can securely attach your support request to your account.',[{text:'Cancel',style:'cancel'},{text:'Sign in',onPress:goToStuffLogin}]);return}
     Alert.prompt('Report a problem','Tell us what happened. Do not include retailer passwords or payment details.',async value=>{const message=String(value||'').trim();if(!message)return;try{await createStuffSupportRequest(user.id,user.email||'',message,'bug');Alert.alert('Sent','Your report has been saved for Stuff support.')}catch(e){Alert.alert('Could not send report',e?.message||'Please try again.')}},'plain-text');
@@ -1001,6 +1015,7 @@ export default function StuffApp() {
       <PageHeader eyebrow="More" title="Help, privacy & about." />
       <View style={s.menuBlockWithTop}>
         <MenuRow title="How it works" sub="From voice to your chosen supermarket" onPress={()=>setMoreView('how')} />
+        {__DEV__&&<MenuRow title="Load regression test shop" sub="22 deliberately awkward groceries for Woolworths + Coles testing" right="Load" onPress={loadRegressionShop} />}
         <MenuRow title="Help & support" sub="Get help or report a problem" onPress={()=>setMoreView('help')} />
         <MenuRow title="Privacy" sub="Voice, account and retailer data" onPress={()=>setMoreView('privacy')} />
         <MenuRow title="Terms" sub="Terms of use and retailer disclaimer" onPress={()=>setMoreView('terms')} />
