@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ActivityIndicator, Alert, Linking, SafeAreaView, ScrollView, Share, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from 'expo-audio';
@@ -6,6 +7,7 @@ import { useStuffAuth } from './AuthContext';
 import {
   cancelStuffInvite,
   createStuffInvite,
+  createStuffSupportRequest,
   deleteStuffAccount,
   loadStuffBundle,
   removeStuffMember,
@@ -19,6 +21,10 @@ import {
 const AUDIO_URL = 'https://wfhgyunfvdyxwtggntpc.supabase.co/functions/v1/hello-david-process-audio';
 const CART_URL = 'https://www.woolworths.com.au/shop/cart';
 const UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1';
+const LEGAL_VERSION = '2026-08-26-v1';
+const PRIVACY_URL = 'https://stufftheshopping.com.au/privacy.html';
+const TERMS_URL = 'https://stufftheshopping.com.au/terms.html';
+const RESTRICTED_RE = /\b(alcohol|alcoholic|beer|lager|ale|cider|wine|champagne|prosecco|spirits?|vodka|gin|whisk(?:y|ey)|bourbon|rum|tequila|liqueur|cigarettes?|cigars?|tobacco|nicotine|vapes?|vaping|e[- ]?cigarettes?)\b/i;
 const norm = v => String(v || '').trim().toLowerCase();
 const title = v => { const s = String(v || '').trim(); return s ? s[0].toUpperCase() + s.slice(1) : ''; };
 const detail = item => {
@@ -28,6 +34,12 @@ const detail = item => {
   if (q === 1 && /^\d/.test(u)) return u;
   return `${q} ${u}`;
 };
+
+function splitRetailerItems(sourceItems) {
+  const allowed=[],restricted=[];
+  for(const item of sourceItems||[]){(RESTRICTED_RE.test(String(item?.name||''))?restricted:allowed).push(item)}
+  return {allowed,restricted};
+}
 
 function mergeItems(current, actions) {
   let next = [...current];
@@ -245,11 +257,23 @@ export default function StuffApp() {
   const [moreView,setMoreView]=useState('main');
   const [authForm,setAuthForm]=useState({email:'',password:''});
   const [authBusy,setAuthBusy]=useState(false),[dataBusy,setDataBusy]=useState(false),[dataReady,setDataReady]=useState(false);
+  const [legalReady,setLegalReady]=useState(false),[legalAccepted,setLegalAccepted]=useState(false);
   const recording=!!recState?.isRecording,count=items.length,canSend=count>0&&!busy&&!recording;
   const listLabel=useMemo(()=>count?`Your list · ${count} ${count===1?'item':'items'}`:'Your list',[count]);
   const activeMemberCount=householdMembers.filter(m=>m.kind==='member').length;
 
   useEffect(()=>{ itemsRef.current=items; },[items]);
+
+  useEffect(()=>{
+    let active=true;
+    AsyncStorage.getItem('stuff_legal_version').then(v=>{if(active){setLegalAccepted(v===LEGAL_VERSION);setLegalReady(true)}}).catch(()=>{if(active){setLegalReady(true)}});
+    return()=>{active=false};
+  },[]);
+
+  async function acceptLegal(){
+    try{await AsyncStorage.setItem('stuff_legal_version',LEGAL_VERSION)}catch(_){}
+    setLegalAccepted(true);
+  }
 
   useEffect(()=>{
     let cancelled=false;
@@ -384,7 +408,7 @@ export default function StuffApp() {
   async function share(){if(!items.length){setStatus('Add some groceries first.');return}try{await Share.share({message:['Our grocery list:',...items.map(i=>`• ${title(i.name)} — ${detail(i)}`)].join('\n')})}catch(_){}}
   function editItem(item){if(!item)return;Alert.prompt('Edit item','Update the item name:',value=>{const name=String(value||'').trim();if(!name)return;setItems(v=>v.map(x=>x.id===item.id?{...x,name}:x));setStatus('');},'plain-text',title(item.name))}
   function clearAll(){if(!items.length)return;Alert.alert('Clear your list?','Remove all groceries from this list?',[{text:'Cancel',style:'cancel'},{text:'Clear all',style:'destructive',onPress:()=>{setItems([]);setOpen(true);setStatus('')}}])}
-  function send(){if(!canSend)return;wooliesReturnTab.current='home';pending.current=items.map(i=>({name:i.name,qty:i.quantity,quantity:i.quantity,unit:i.unit}));injected.current=false;retries.current=0;setStatus('Connecting to Woolies…');setCartUrl('https://www.woolworths.com.au/');setWebKey(k=>k+1);setMode('woolies')}
+  function send(){if(!canSend)return;const {allowed,restricted}=splitRetailerItems(items);if(restricted.length)Alert.alert('Some items were not automated',`Stuff leaves age-restricted items on your list for you to handle directly with the retailer: ${restricted.map(x=>title(x.name)).join(', ')}.`);if(!allowed.length)return;wooliesReturnTab.current='home';pending.current=allowed.map(i=>({name:i.name,qty:i.quantity,quantity:i.quantity,unit:i.unit}));injected.current=false;retries.current=0;setStatus('Connecting to Woolies…');setCartUrl('https://www.woolworths.com.au/');setWebKey(k=>k+1);setMode('woolies')}
   function back(){pending.current=[];injected.current=false;retries.current=0;setMode('shop');setTab(wooliesReturnTab.current||'home');setStatus('')}
   function openCart(){setStatus('Opening your Woolies cart…');setCartUrl(CART_URL+'?stuffShopping='+Date.now())}
   function onMessage(e){let m;try{m=JSON.parse(e.nativeEvent.data)}catch(_){return}if(m?.type==='WOOLIES_STATUS'){setStatus(m.message||'Building your Woolies cart…');return}if(m?.type==='WOOLIES_DONE'){const added=Number(m.added||0);pending.current=[];setStatus(added?`Done — ${added} ${added===1?'product':'products'} added.`:(m.message||'Nothing was added.'));if(added)setTimeout(openCart,350)}}
@@ -403,7 +427,7 @@ export default function StuffApp() {
   function goTab(next){setTab(next);setAccountView('main');setHouseholdView('main');setMoreView('main');setStatus('')}
   function goToStuffLogin(){setTab('account');setAccountView('auth');setHouseholdView('main')}
   function openWoolworthsFromAccount(){wooliesReturnTab.current='account';pending.current=[];injected.current=false;setStatus('Woolworths on this device');setCartUrl('https://www.woolworths.com.au/');setWebKey(k=>k+1);setMode('woolies')}
-  function compareColes(){if(!canSend)return;wooliesReturnTab.current='home';pending.current=items.map(i=>({name:i.name,qty:i.quantity,quantity:i.quantity,unit:i.unit}));injected.current=false;setColesResults(null);setStatus('Checking Coles…');setWebKey(k=>k+1);setMode('coles')}
+  function compareColes(){if(!canSend)return;const {allowed,restricted}=splitRetailerItems(items);if(restricted.length)Alert.alert('Some items were not automated',`Stuff leaves age-restricted items on your list for you to handle directly with the retailer: ${restricted.map(x=>title(x.name)).join(', ')}.`);if(!allowed.length)return;wooliesReturnTab.current='home';pending.current=allowed.map(i=>({name:i.name,qty:i.quantity,quantity:i.quantity,unit:i.unit}));injected.current=false;setColesResults(null);setStatus('Checking Coles…');setWebKey(k=>k+1);setMode('coles')}
   function openColesFromAccount(){wooliesReturnTab.current='account';pending.current=[];injected.current=false;setStatus('Coles on this device');setWebKey(k=>k+1);setMode('colesSite')}
   function onColesMessage(e){let m;try{m=JSON.parse(e.nativeEvent.data)}catch(_){return}if(m?.type==='COLES_STATUS'){setStatus(m.message||'Checking Coles…');return}if(m?.type==='COLES_DONE'){pending.current=[];setColesResults(m);setMode('colesResults');setStatus('')}}
   function onColesLoad(e){const u=String(e.nativeEvent.url||'').toLowerCase();if(!u.includes('coles.com.au')||injected.current)return;injected.current=true;setStatus('Matching your groceries at Coles…');setTimeout(()=>webRef.current?.injectJavaScript(colesCompareScript(pending.current,preferences)),1000)}
@@ -569,7 +593,26 @@ export default function StuffApp() {
     }}]);
   }
 
-  function reportProblem(){Alert.alert('Report a problem','We’ll connect this to a support channel before release. For now this confirms where problem reporting will live.')}
+  function reportProblem(){
+    if(!user){Alert.alert('Sign in to contact support','Sign in or create a Stuff account so we can securely attach your support request to your account.',[{text:'Cancel',style:'cancel'},{text:'Sign in',onPress:goToStuffLogin}]);return}
+    Alert.prompt('Report a problem','Tell us what happened. Do not include retailer passwords or payment details.',async value=>{const message=String(value||'').trim();if(!message)return;try{await createStuffSupportRequest(user.id,user.email||'',message,'bug');Alert.alert('Sent','Your report has been saved for Stuff support.')}catch(e){Alert.alert('Could not send report',e?.message||'Please try again.')}},'plain-text');
+  }
+
+  if(!legalReady)return <SafeAreaView style={s.safe}><StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/><View style={{flex:1,alignItems:'center',justifyContent:'center'}}><ActivityIndicator color="#F4512C"/></View></SafeAreaView>;
+
+  if(!legalAccepted)return <SafeAreaView style={s.safe}>
+    <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
+    <ScrollView contentContainerStyle={s.pageScreen}>
+      <PageHeader eyebrow="WELCOME TO STUFF" title="Groceries, without the admin." lead="One quick acknowledgement before you start shopping." />
+      <InfoBlock title="Independent shopping assistant">Stuff is independent and is not affiliated with, endorsed by or sponsored by Woolworths, Coles or other retailers.</InfoBlock>
+      <InfoBlock title="Always review the retailer cart">Product matching can be wrong. Prices, availability and quantities can change. You remain in control and complete checkout and payment with the retailer.</InfoBlock>
+      <InfoBlock title="Voice processing">When you tap to talk, the recording is sent for AI transcription and grocery-list interpretation. Stuff does not intentionally store the audio file in its database after processing.</InfoBlock>
+      <TouchableOpacity style={s.secondaryButton} onPress={()=>Linking.openURL(PRIVACY_URL)}><Text style={s.secondaryButtonText}>Read Privacy Policy</Text></TouchableOpacity>
+      <TouchableOpacity style={s.secondaryButton} onPress={()=>Linking.openURL(TERMS_URL)}><Text style={s.secondaryButtonText}>Read Terms of Use</Text></TouchableOpacity>
+      <TouchableOpacity style={s.primaryButton} onPress={acceptLegal}><Text style={s.primaryButtonText}>Continue to Stuff</Text></TouchableOpacity>
+      <Text style={s.formNote}>By continuing, you agree to the Terms of Use and acknowledge the Privacy Policy.</Text>
+    </ScrollView>
+  </SafeAreaView>;
 
   if(mode==='woolies')return <SafeAreaView style={s.safe}><StatusBar barStyle="dark-content"/><View style={s.cartHead}><TouchableOpacity onPress={back} style={s.back}><Text style={s.backText}>‹ {wooliesReturnTab.current==='account'?'Account':'Shop'}</Text></TouchableOpacity><View style={{flex:1}}><Text style={s.cartTitle}>Woolies</Text><Text style={s.cartStatus} numberOfLines={1}>{status}</Text></View></View><WebView key={webKey} ref={webRef} source={{uri:cartUrl}} style={{flex:1}} onMessage={onMessage} onLoadEnd={onLoad} userAgent={UA} javaScriptEnabled domStorageEnabled sharedCookiesEnabled thirdPartyCookiesEnabled cacheEnabled incognito={false} setSupportMultipleWindows={false}/></SafeAreaView>;
 
@@ -818,7 +861,7 @@ export default function StuffApp() {
       <View style={s.stepsBlock}>
         <View style={s.stepCard}><Text style={s.stepNumber}>1</Text><View style={{flex:1}}><Text style={s.stepTitle}>Say what you need</Text><Text style={s.stepCopy}>Tap to talk and say the groceries naturally. Add more later if you remember something else.</Text></View></View>
         <View style={s.stepCard}><Text style={s.stepNumber}>2</Text><View style={{flex:1}}><Text style={s.stepTitle}>Check the list</Text><Text style={s.stepCopy}>Stuff turns what you said into a simple list you can edit, remove from or share.</Text></View></View>
-        <View style={s.stepCard}><Text style={s.stepNumber}>3</Text><View style={{flex:1}}><Text style={s.stepTitle}>Choose where to shop</Text><Text style={s.stepCopy}>Stuff matches the list for your preferred supermarket. Woolworths can be sent into the cart; Coles currently shows matched products and an estimated basket.</Text></View></View>
+        <View style={s.stepCard}><Text style={s.stepNumber}>3</Text><View style={{flex:1}}><Text style={s.stepTitle}>Choose where to shop</Text><Text style={s.stepCopy}>Stuff matches the list for your preferred supermarket and hands confident matches into the retailer experience. You review everything before ordering.</Text></View></View>
         <View style={s.stepCard}><Text style={s.stepNumber}>4</Text><View style={{flex:1}}><Text style={s.stepTitle}>You review and checkout</Text><Text style={s.stepCopy}>Check every product, price and quantity with the retailer before completing your order.</Text></View></View>
       </View>
     </ScrollView>
@@ -834,7 +877,7 @@ export default function StuffApp() {
         <MenuRow title="Shopping list help" sub="Voice, editing and shared lists" onPress={()=>setMoreView('how')} />
         <MenuRow title="Retailer help" sub="Retailer login, cart and checkout stay with the retailer" onPress={()=>setMoreView('privacy')} />
       </View>
-      <InfoBlock title="Before release">We’ll add a real support channel and diagnostic information here. The app should never ask you to send a Woolworths password or payment details to Stuff support.</InfoBlock>
+      <InfoBlock title="Support and security">Signed-in users can send a support report from this screen. Never include a Woolworths or Coles password, verification code or payment details in a support report.</InfoBlock>
     </ScrollView>
     <BottomNav tab={tab} onChange={goTab}/>
   </SafeAreaView>;
@@ -843,10 +886,12 @@ export default function StuffApp() {
     <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
     <ScrollView contentContainerStyle={s.pageScreen}>
       <PageHeader eyebrow="More" title="Privacy" lead="A simple view of what Stuff uses and what stays with the retailer." onBack={()=>setMoreView('main')} backLabel="More" />
-      <InfoBlock title="Voice">Your microphone is used only when you tap to talk. The recording is sent for processing so Stuff can turn it into grocery items.</InfoBlock>
+      <InfoBlock title="Voice and AI">Your microphone is used only when you tap to talk. The recording is sent to Stuff’s backend and OpenAI’s API for transcription and grocery-list interpretation. Stuff does not intentionally store the audio file in its database after processing.</InfoBlock>
       <InfoBlock title="Stuff account">If you create a Stuff account, Stuff stores your account details, household membership, preferences and shared shopping data needed to provide the service.</InfoBlock>
       <InfoBlock title="Retailer accounts">Stuff does not ask for or store your Woolworths or Coles password or payment details. Retailer login, saved payment methods and checkout stay with the retailer.</InfoBlock>
       <InfoBlock title="Household sharing">People who join the same household can see and change the shared grocery list. Household access is protected by signed-in Stuff accounts.</InfoBlock>
+      <InfoBlock title="Data hosting">Stuff currently uses Supabase infrastructure hosted in South Korea, and OpenAI API services for voice processing.</InfoBlock>
+      <TouchableOpacity style={s.secondaryButton} onPress={()=>Linking.openURL(PRIVACY_URL)}><Text style={s.secondaryButtonText}>Open full Privacy Policy</Text></TouchableOpacity>
     </ScrollView>
     <BottomNav tab={tab} onChange={goTab}/>
   </SafeAreaView>;
@@ -855,10 +900,13 @@ export default function StuffApp() {
     <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
     <ScrollView contentContainerStyle={s.pageScreen}>
       <PageHeader eyebrow="More" title="Terms" lead="The important boundaries of the current service." onBack={()=>setMoreView('main')} backLabel="More" />
-      <InfoBlock title="You stay in control">Stuff helps prepare a shopping list and may add suggested products to a retailer cart. You must review the retailer cart before ordering.</InfoBlock>
+      <InfoBlock title="Independent service">Stuff is not affiliated with, endorsed by or sponsored by Woolworths, Coles or other retailers unless we expressly say otherwise.</InfoBlock>
+      <InfoBlock title="You stay in control">Stuff helps prepare a shopping list and may add suggested products to a retailer cart. Product matching can be wrong, so you must review the retailer cart before ordering.</InfoBlock>
       <InfoBlock title="Prices and availability">Retailer prices, specials, availability, substitutions and delivery options can change. Your chosen retailer remains the source of truth for the final order.</InfoBlock>
       <InfoBlock title="Checkout and payment">Stuff does not submit checkout or payment. Ordering and payment are completed with the retailer.</InfoBlock>
-      <InfoBlock title="Current integration">This MVP uses current Woolworths and Coles website behaviour and is not an official retailer integration. Website behaviour may change before retailer-approved integrations are available.</InfoBlock>
+      <InfoBlock title="Restricted products">Stuff does not automatically match or add alcohol, tobacco, nicotine, vaping or other age-restricted products during this release.</InfoBlock>
+      <InfoBlock title="Retailer connectivity">Stuff uses current retailer website behaviour. Retailer functionality can change or become unavailable, and Stuff will not bypass retailer security controls.</InfoBlock>
+      <TouchableOpacity style={s.secondaryButton} onPress={()=>Linking.openURL(TERMS_URL)}><Text style={s.secondaryButtonText}>Open full Terms of Use</Text></TouchableOpacity>
     </ScrollView>
     <BottomNav tab={tab} onChange={goTab}/>
   </SafeAreaView>;

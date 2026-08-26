@@ -221,3 +221,18 @@ export async function deleteStuffAccount() {
   if (!data?.success) throw new Error(data?.error || 'Could not delete account.');
   await supabase.auth.signOut({ scope: 'local' });
 }
+
+
+export async function createStuffSupportRequest(userId, email, message, category='support') {
+  const clean=String(message||'').trim();
+  if(!userId)throw new Error('Sign in to contact support.');
+  if(!clean)throw new Error('Tell us what happened first.');
+  const result=await supabase.from('stuff_support_requests').insert({
+    user_id:userId,
+    email:String(email||'').trim()||null,
+    category,
+    message:clean.slice(0,5000),
+    app_version:'0.1.0',
+  }).select('id').single();
+  return throwIfError(result);
+}
