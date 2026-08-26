@@ -62,11 +62,31 @@ function wooliesScript(items) {
 })();true;`;
 }
 
+function BottomNav({tab,onChange}) {
+  const labelStyle = key => tab===key ? s.navLabelActive : s.navLabel;
+  return <View style={s.bottomNav}>
+    <TouchableOpacity style={s.navItem} onPress={()=>onChange('home')}><Text style={s.navIcon}>⌂</Text><Text style={labelStyle('home')}>Home</Text></TouchableOpacity>
+    <TouchableOpacity style={s.navItem} onPress={()=>onChange('household')}><Text style={s.navIcon}>◫</Text><Text style={labelStyle('household')}>Household</Text></TouchableOpacity>
+    <TouchableOpacity style={s.navItem} onPress={()=>onChange('account')}><Text style={s.navIcon}>◎</Text><Text style={labelStyle('account')}>Account</Text></TouchableOpacity>
+    <TouchableOpacity style={s.navItem} onPress={()=>onChange('more')}><Text style={s.navMore}>•••</Text><Text style={labelStyle('more')}>More</Text></TouchableOpacity>
+  </View>;
+}
+
+function MenuRow({title:rowTitle,sub,right='›',onPress,danger=false}) {
+  return <TouchableOpacity style={s.menuRow} onPress={onPress} disabled={!onPress} activeOpacity={onPress?.7:1}>
+    <View style={{flex:1,paddingRight:12}}>
+      <Text style={[s.menuTitle,danger&&s.danger]}>{rowTitle}</Text>
+      {!!sub&&<Text style={s.menuSub}>{sub}</Text>}
+    </View>
+    {!!right&&<Text style={[s.menuRight,danger&&s.danger]}>{right}</Text>}
+  </TouchableOpacity>;
+}
+
 export default function StuffApp() {
   const webRef = useRef(null), pending = useRef([]), injected = useRef(false), retries = useRef(0);
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recState = useAudioRecorderState(recorder, 250);
-  const [mode,setMode]=useState('shop'),[items,setItems]=useState([]),[open,setOpen]=useState(true),[status,setStatus]=useState(''),[busy,setBusy]=useState(false),[cartUrl,setCartUrl]=useState(CART_URL),[webKey,setWebKey]=useState(0);
+  const [mode,setMode]=useState('shop'),[tab,setTab]=useState('home'),[items,setItems]=useState([]),[open,setOpen]=useState(true),[status,setStatus]=useState(''),[busy,setBusy]=useState(false),[cartUrl,setCartUrl]=useState(CART_URL),[webKey,setWebKey]=useState(0);
   const recording=!!recState?.isRecording,count=items.length,canSend=count>0&&!busy&&!recording;
   const listLabel=useMemo(()=>count?`Your list · ${count} ${count===1?'item':'items'}`:'Your list',[count]);
 
@@ -108,9 +128,87 @@ export default function StuffApp() {
     setTimeout(()=>webRef.current?.injectJavaScript(wooliesScript(pending.current)),1000);
   }
 
-  function future(label){Alert.alert(label,`${label} is the next part of the app we’ll wire up.`)}
+  function goTab(next){setTab(next);setStatus('')}
+  function householdInvite(){Alert.alert('Invite someone','Next we’ll wire household invitations so another person can add to the same grocery list.')}
+  function howItWorks(){Alert.alert('How it works','1. Speak your grocery list.\n\n2. Check the items.\n\n3. Send them to Woolies.\n\n4. Review your Woolworths cart before checkout.')}
+  function privacy(){Alert.alert('Privacy','Your microphone is used only when you tap to talk. Your recording is sent for processing so we can turn what you said into grocery items.')}
+  function about(){Alert.alert('Stuff the Shopping','Say what you need. We build the list and help put it into your Woolworths cart.')}
 
   if(mode==='woolies')return <SafeAreaView style={s.safe}><StatusBar barStyle="dark-content"/><View style={s.cartHead}><TouchableOpacity onPress={back} style={s.back}><Text style={s.backText}>‹ Shop</Text></TouchableOpacity><View style={{flex:1}}><Text style={s.cartTitle}>Woolies</Text><Text style={s.cartStatus} numberOfLines={1}>{status}</Text></View></View><WebView key={webKey} ref={webRef} source={{uri:cartUrl}} style={{flex:1}} onMessage={onMessage} onLoadEnd={onLoad} userAgent={UA} javaScriptEnabled domStorageEnabled sharedCookiesEnabled thirdPartyCookiesEnabled cacheEnabled incognito={false} setSupportMultipleWindows={false}/></SafeAreaView>;
+
+  if(tab==='household')return <SafeAreaView style={s.safe}>
+    <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
+    <ScrollView contentContainerStyle={s.pageScreen}>
+      <Text style={s.brand}>stuff{`\n`}the{`\n`}shopping<Text style={s.dot}>.</Text></Text>
+      <View style={s.pageIntro}>
+        <Text style={s.pageEyebrow}>Household</Text>
+        <Text style={s.pageTitle}>One list. Everyone at home.</Text>
+        <Text style={s.pageLead}>Keep the weekly groceries in one place, whoever remembers them.</Text>
+      </View>
+
+      <View style={s.householdHero}>
+        <Text style={s.heroKicker}>THIS WEEK’S LIST</Text>
+        <Text style={s.heroNumber}>{count}</Text>
+        <Text style={s.heroCopy}>{count===1?'item':'items'} waiting</Text>
+        <TouchableOpacity style={s.heroButton} onPress={()=>goTab('home')}><Text style={s.heroButtonText}>View shopping list →</Text></TouchableOpacity>
+      </View>
+
+      <Text style={s.sectionTitle}>People</Text>
+      <View style={s.menuBlock}>
+        <MenuRow title="You" sub="Household owner" right="Owner" />
+        <MenuRow title="Invite someone" sub="Let someone else add to the same list" onPress={householdInvite} />
+      </View>
+    </ScrollView>
+    <BottomNav tab={tab} onChange={goTab}/>
+  </SafeAreaView>;
+
+  if(tab==='account')return <SafeAreaView style={s.safe}>
+    <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
+    <ScrollView contentContainerStyle={s.pageScreen}>
+      <Text style={s.brand}>stuff{`\n`}the{`\n`}shopping<Text style={s.dot}>.</Text></Text>
+      <View style={s.pageIntro}>
+        <Text style={s.pageEyebrow}>Account</Text>
+        <Text style={s.pageTitle}>Your shopping setup.</Text>
+        <Text style={s.pageLead}>Keep the essentials simple. We only need what helps get the groceries done.</Text>
+      </View>
+
+      <Text style={s.sectionTitle}>Shopping</Text>
+      <View style={s.menuBlock}>
+        <MenuRow title="Woolworths" sub="Sign in securely when you send your list" right="Ready" />
+        <MenuRow title="Microphone" sub="Used when you tap to talk" right="On" />
+      </View>
+
+      <Text style={s.sectionTitle}>Profile</Text>
+      <View style={s.menuBlock}>
+        <MenuRow title="Your details" sub="Name and account details" onPress={()=>Alert.alert('Your details','Profile editing is the next account step we’ll wire up.')} />
+      </View>
+    </ScrollView>
+    <BottomNav tab={tab} onChange={goTab}/>
+  </SafeAreaView>;
+
+  if(tab==='more')return <SafeAreaView style={s.safe}>
+    <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
+    <ScrollView contentContainerStyle={s.pageScreen}>
+      <Text style={s.brand}>stuff{`\n`}the{`\n`}shopping<Text style={s.dot}>.</Text></Text>
+      <View style={s.pageIntro}>
+        <Text style={s.pageEyebrow}>More</Text>
+        <Text style={s.pageTitle}>The useful bits.</Text>
+      </View>
+
+      <View style={[s.menuBlock,{marginTop:24}]}> 
+        <MenuRow title="How it works" sub="From voice to Woolies cart" onPress={howItWorks} />
+        <MenuRow title="Privacy" sub="How voice input is used" onPress={privacy} />
+        <MenuRow title="About Stuff the Shopping" onPress={about} />
+      </View>
+
+      <Text style={s.sectionTitle}>Shopping list</Text>
+      <View style={s.menuBlock}>
+        <MenuRow title="Clear shopping list" sub={count?`${count} ${count===1?'item':'items'} currently on your list`:'Your list is already empty'} right="" onPress={count?clearAll:undefined} danger={count>0} />
+      </View>
+      <Text style={s.version}>Stuff the Shopping · MVP</Text>
+    </ScrollView>
+    <BottomNav tab={tab} onChange={goTab}/>
+  </SafeAreaView>;
 
   return <SafeAreaView style={s.safe}>
     <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
@@ -171,18 +269,14 @@ export default function StuffApp() {
       <Text style={s.note}>We’ll build your Woolies cart. You review it before checkout.</Text>
     </ScrollView>
 
-    <View style={s.bottomNav}>
-      <TouchableOpacity style={s.navItem}><Text style={s.navIcon}>⌂</Text><Text style={s.navLabelActive}>Home</Text></TouchableOpacity>
-      <TouchableOpacity style={s.navItem} onPress={()=>future('Household')}><Text style={s.navIcon}>◫</Text><Text style={s.navLabel}>Household</Text></TouchableOpacity>
-      <TouchableOpacity style={s.navItem} onPress={()=>future('Account')}><Text style={s.navIcon}>◎</Text><Text style={s.navLabel}>Account</Text></TouchableOpacity>
-      <TouchableOpacity style={s.navItem} onPress={()=>future('More')}><Text style={s.navMore}>•••</Text><Text style={s.navLabel}>More</Text></TouchableOpacity>
-    </View>
+    <BottomNav tab={tab} onChange={goTab}/>
   </SafeAreaView>;
 }
 
 const s=StyleSheet.create({
   safe:{flex:1,backgroundColor:'#F7F1E3'},
   screen:{padding:22,paddingTop:14,paddingBottom:22},
+  pageScreen:{padding:22,paddingTop:14,paddingBottom:34},
   brand:{color:'#171717',fontSize:29,lineHeight:25,fontWeight:'900',letterSpacing:-1.5},
   dot:{color:'#F4512C'},
   intro:{marginTop:36},
@@ -223,11 +317,29 @@ const s=StyleSheet.create({
   sendSub:{marginTop:2,color:'#E5F1ED',fontSize:11,fontWeight:'600'},
   sendArrow:{color:'#FFFFFF',fontSize:34,lineHeight:36,fontWeight:'300',marginLeft:7},
   note:{marginTop:7,color:'#69635A',fontSize:11,lineHeight:15,textAlign:'center'},
+  pageIntro:{marginTop:34},
+  pageEyebrow:{fontSize:15,color:'#F4512C',fontWeight:'900',textTransform:'uppercase',letterSpacing:.6},
+  pageTitle:{marginTop:8,color:'#171717',fontSize:34,lineHeight:37,fontWeight:'900',letterSpacing:-1.2},
+  pageLead:{marginTop:10,color:'#55514A',fontSize:15,lineHeight:21,fontWeight:'600',maxWidth:330},
+  householdHero:{marginTop:28,backgroundColor:'#F5D95E',borderRadius:22,padding:20},
+  heroKicker:{fontSize:11,color:'#5A4B00',fontWeight:'900',letterSpacing:.8},
+  heroNumber:{marginTop:8,color:'#171717',fontSize:50,lineHeight:54,fontWeight:'900',letterSpacing:-2},
+  heroCopy:{color:'#4F493B',fontSize:14,fontWeight:'700'},
+  heroButton:{marginTop:18,alignSelf:'flex-start',backgroundColor:'#171717',borderRadius:18,paddingHorizontal:14,paddingVertical:9},
+  heroButtonText:{color:'#FFFFFF',fontSize:13,fontWeight:'900'},
+  sectionTitle:{marginTop:28,marginBottom:8,color:'#171717',fontSize:18,fontWeight:'900'},
+  menuBlock:{borderTopWidth:StyleSheet.hairlineWidth,borderTopColor:'#BEB6A7',borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:'#BEB6A7'},
+  menuRow:{minHeight:66,flexDirection:'row',alignItems:'center',borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:'#D4CCBE'},
+  menuTitle:{color:'#171717',fontSize:16,fontWeight:'850'},
+  menuSub:{marginTop:4,color:'#69635A',fontSize:12,lineHeight:16,fontWeight:'600'},
+  menuRight:{color:'#69635A',fontSize:14,fontWeight:'800'},
+  danger:{color:'#C83D24'},
+  version:{marginTop:28,color:'#8B8479',fontSize:11,textAlign:'center',fontWeight:'700'},
   bottomNav:{minHeight:82,backgroundColor:'#000000',paddingHorizontal:12,paddingTop:10,paddingBottom:10,flexDirection:'row',alignItems:'center',justifyContent:'space-around'},
   navItem:{flex:1,alignItems:'center',justifyContent:'center'},
   navIcon:{color:'#FFFFFF',fontSize:26,lineHeight:28,fontWeight:'700'},
   navMore:{color:'#FFFFFF',fontSize:23,lineHeight:28,fontWeight:'900',letterSpacing:2},
-  navLabel:{marginTop:3,color:'#FFFFFF',fontSize:11,fontWeight:'700'},
+  navLabel:{marginTop:3,color:'#AFAFAF',fontSize:11,fontWeight:'700'},
   navLabelActive:{marginTop:3,color:'#FFFFFF',fontSize:11,fontWeight:'900'},
   cartHead:{minHeight:64,paddingHorizontal:12,paddingVertical:8,backgroundColor:'#F7F1E3',borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:'#C9C1B4',flexDirection:'row',alignItems:'center'},
   back:{padding:10},
