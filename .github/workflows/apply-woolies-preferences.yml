@@ -1,0 +1,64 @@
+name: Apply Woolworths preferences
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-woolies-preferences.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Update Stuff matching behaviour
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('mobile/StuffApp.js')
+          text = path.read_text()
+
+          old = """function wooliesScript(items) {\n  const payload = JSON.stringify(items.slice(0, 60));\n  return `\n(async()=>{\n const items=${payload},sleep=ms=>new Promise(r=>setTimeout(r,ms));"""
+          new = """function wooliesScript(items, preferences={}) {\n  const payload = JSON.stringify(items.slice(0, 60));\n  const prefsPayload = JSON.stringify({\n    matchMode: preferences.matchMode==='cheapest'?'cheapest':'best',\n    preferSpecials: preferences.preferSpecials!==false,\n    allowAlternatives: preferences.allowAlternatives!==false,\n  });\n  return `\n(async()=>{\n const items=${payload},prefs=${prefsPayload},sleep=ms=>new Promise(r=>setTimeout(r,ms));"""
+          if old not in text:
+              raise SystemExit('wooliesScript header not found')
+          text = text.replace(old, new, 1)
+
+          old = "if(p.IsOnSpecial)s+=5;if(p.IsAvailable===false||p.IsInStock===false)s-=200;return s};"
+          new = "if(prefs.preferSpecials&&p.IsOnSpecial)s+=35;if(p.IsAvailable===false||p.IsInStock===false)s-=200;return s};"
+          if old not in text:
+              raise SystemExit('specials scoring line not found')
+          text = text.replace(old, new, 1)
+
+          old = """ps.sort((a,b)=>score(i,b)-score(i,a)||+(a.Price||999)-+(b.Price||999));const p=ps[0],ws=words(query(i)),hits=p?ws.filter(w=>txt(p).includes(w)).length:0;if(!p||!p.Stockcode||score(i,p)<20||hits<(ws.length===1?1:Math.min(2,ws.length))||used.has(String(p.Stockcode))){unmatched.push(i.name);continue}used.add(String(p.Stockcode));chosen.push([i,p]);await sleep(120)"""
+          new = """const ws=words(query(i)),needed=ws.length===1?1:Math.min(2,ws.length);let ranked=ps.map(p=>({p,s:score(i,p),hits:ws.filter(w=>txt(p).includes(w)).length,price:+(p.Price||999)})).filter(x=>x.p?.Stockcode&&x.s>=20&&x.hits>=needed);if(!ranked.length){unmatched.push(i.name);continue}const bestScore=Math.max(...ranked.map(x=>x.s));ranked=ranked.filter(x=>x.s>=bestScore-(prefs.allowAlternatives?35:12));if(!prefs.allowAlternatives){const exactQuery=query(i).toLowerCase();ranked=ranked.filter(x=>x.hits===ws.length||txt(x.p).includes(exactQuery));if(!ranked.length){unmatched.push(i.name);continue}}ranked.sort((a,b)=>prefs.matchMode==='cheapest'?(a.price-b.price||b.s-a.s):(b.s-a.s||a.price-b.price));const p=ranked[0]?.p;if(!p||used.has(String(p.Stockcode))){unmatched.push(i.name);continue}used.add(String(p.Stockcode));chosen.push([i,p]);await sleep(120)"""
+          if old not in text:
+              raise SystemExit('product selection block not found')
+          text = text.replace(old, new, 1)
+
+          old = "setTimeout(()=>webRef.current?.injectJavaScript(wooliesScript(pending.current)),1000);"
+          new = "setTimeout(()=>webRef.current?.injectJavaScript(wooliesScript(pending.current,preferences)),1000);"
+          if old not in text:
+              raise SystemExit('injection call not found')
+          text = text.replace(old, new, 1)
+
+          old = "These preferences are stored with your Stuff account. We’ll use them more deeply in product matching as the matching engine develops."
+          new = "Best match, cheapest suitable, specials and alternative settings now change how Stuff chooses Woolworths products. Usual-brand learning comes next."
+          if old not in text:
+              raise SystemExit('preferences note not found')
+          text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+      - name: Commit matching changes
+        run: |
+          git config user.name "stuff-shopping-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add mobile/StuffApp.js
+          git commit -m "Make shopping preferences affect Woolworths matching"
+          git push origin HEAD:main
