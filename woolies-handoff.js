@@ -2,8 +2,6 @@
   const actions = document.querySelector('.voice-first-actions');
   if (!actions) return;
 
-  const OLIVE_LINK = 'https://woolworths.app.link/olive-services-page?icmpid=sm-july-olive-ce-multimedia-cards-1-tile-1%3Aadd-to-cart-wk-05';
-
   const style = document.createElement('style');
   style.textContent = `
     .technical-only { display: none !important; }
@@ -35,63 +33,43 @@
     }).filter(item => item.name);
   }
 
-  function buildPrompt(items) {
-    const lines = items.map(item => {
-      const qty = Number.isFinite(item.qty) && item.qty > 0 ? item.qty : 1;
-      const unit = item.unit ? ` ${item.unit}` : '';
-      return `- ${qty}${unit} ${item.name}`.replace(/\s+/g, ' ').trim();
-    });
-
-    return [
-      'Please add the following groceries to my Woolworths cart.',
-      'Use my usual product where that is obvious. Preserve the quantities and pack sizes exactly.',
-      'If I have said cheapest or on special, choose a sensible value option. Do not check out.',
-      '',
-      ...lines
-    ].join('\n');
+  function helperReady() {
+    return document.documentElement.dataset.helloDavidWooliesHelper === 'ready';
   }
 
-  async function copyText(text) {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-
-    const area = document.createElement('textarea');
-    area.value = text;
-    area.setAttribute('readonly', '');
-    area.style.position = 'fixed';
-    area.style.opacity = '0';
-    document.body.appendChild(area);
-    area.select();
-    const ok = document.execCommand('copy');
-    area.remove();
-    return ok;
+  function resetButton() {
+    btn.disabled = false;
+    btn.textContent = 'Send to Woolies';
   }
 
-  btn.addEventListener('click', async () => {
+  window.addEventListener('hello-david-woolies-helper-ready', () => {
+    note.textContent = '';
+  });
+
+  window.addEventListener('hello-david-woolies-status', () => {
+    note.textContent = document.documentElement.dataset.helloDavidWooliesStatus || '';
+    if (/could not|nothing/i.test(note.textContent)) resetButton();
+  });
+
+  btn.addEventListener('click', () => {
     const items = currentItems();
     if (!items.length) {
       note.textContent = 'Add something to the shop first.';
       return;
     }
 
-    btn.disabled = true;
-    btn.textContent = 'Opening Woolies…';
-
-    try {
-      const prompt = buildPrompt(items);
-      await copyText(prompt);
-      note.textContent = 'Your list is copied. In Olive, paste it and tap send — Olive can add the products to your Woolies cart.';
-
-      setTimeout(() => {
-        window.location.href = OLIVE_LINK;
-      }, 350);
-    } catch (error) {
-      console.error('Woolies handoff failed', error);
-      note.textContent = 'Could not copy the list. Try again.';
-      btn.disabled = false;
-      btn.textContent = 'Send to Woolies';
+    if (!helperReady()) {
+      note.textContent = 'The desktop Woolies helper is not installed in this browser yet.';
+      return;
     }
+
+    btn.disabled = true;
+    btn.textContent = 'Building Woolies cart…';
+    note.textContent = 'Opening Woolies and matching your products. No copying or pasting.';
+
+    document.documentElement.dataset.helloDavidShop = JSON.stringify(items);
+    window.dispatchEvent(new Event('hello-david-send-to-woolies'));
+
+    setTimeout(resetButton, 6000);
   });
 })();
