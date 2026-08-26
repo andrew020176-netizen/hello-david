@@ -5,7 +5,8 @@
   function liveOnlyBasket() {
     if (!out) return;
     out.innerHTML = "";
-    if (!window.state?.items?.length) {
+    const itemCount = document.querySelectorAll(".item-row").length;
+    if (!itemCount) {
       out.innerHTML = '<div class="empty-state">Add some groceries and David will compare live prices.</div>';
       if (notice) notice.textContent = "Add an item and David will compare live prices.";
       return;
