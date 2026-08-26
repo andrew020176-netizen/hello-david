@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Hello David Woolies Helper",
+  "version": "0.1.0",
+  "description": "Prototype helper that sends a Hello David shopping list into the current Woolworths browser session.",
+  "permissions": ["storage", "tabs", "scripting"],
+  "host_permissions": [
+    "https://hellodavid.com.au/*",
+    "https://www.hellodavid.com.au/*",
+    "https://www.woolworths.com.au/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://hellodavid.com.au/*", "https://www.hellodavid.com.au/*"],
+      "js": ["hello-david-bridge.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Hello David Woolies Helper"
+  }
+}
