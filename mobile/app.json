@@ -7,11 +7,15 @@
     "orientation": "portrait",
     "ios": {
       "supportsTablet": false,
+      "bundleIdentifier": "au.com.stufftheshopping.app",
+      "buildNumber": "1",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Stuff the Shopping uses the microphone so you can speak your grocery list."
+        "NSMicrophoneUsageDescription": "Stuff the Shopping uses the microphone only when you tap to talk so it can turn what you say into your grocery list."
       }
     },
     "android": {
+      "package": "au.com.stufftheshopping.app",
+      "versionCode": 1,
       "permissions": ["RECORD_AUDIO"]
     }
   }
