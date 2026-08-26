@@ -81,7 +81,18 @@ function StuffRootInner() {
     return () => { cancelled = true; };
   }, [user?.id, loading, pendingInvite]);
 
-  return <StuffApp key={`stuff-${appKey}`} />;
+  async function joinHouseholdCode(code) {
+    const clean = String(code || '').trim().toUpperCase();
+    if (!clean) throw new Error('Enter an invite code.');
+    if (!user) throw new Error('Sign in to Stuff before joining a household.');
+    await acceptStuffInvite(clean);
+    await AsyncStorage.removeItem(PENDING_INVITE_KEY).catch(() => {});
+    setPendingInvite(null);
+    setAppKey(value => value + 1);
+    Alert.alert('Household joined', 'You’re now using the shared household shopping list.');
+  }
+
+  return <StuffApp key={`stuff-${appKey}`} onJoinHouseholdCode={joinHouseholdCode} />;
 }
 
 export default function AppRoot() {

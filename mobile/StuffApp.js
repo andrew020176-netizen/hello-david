@@ -248,7 +248,7 @@ function InfoBlock({title:blockTitle,children}) {
   return <View style={s.infoBlock}><Text style={s.infoTitle}>{blockTitle}</Text><Text style={s.infoCopy}>{children}</Text></View>;
 }
 
-export default function StuffApp() {
+export default function StuffApp({onJoinHouseholdCode}) {
   const webRef = useRef(null), pending = useRef([]), injected = useRef(false), retries = useRef(0), wooliesReturnTab = useRef('home');
   const colesCartQueue=useRef([]),colesCartPos=useRef(0),colesCartAdded=useRef(0),colesCartFailed=useRef([]),colesCartInjected=useRef(false);
   const retailerWatchdog=useRef(null);
@@ -268,6 +268,7 @@ export default function StuffApp() {
   const [householdName,setHouseholdName]=useState('My household');
   const [householdMembers,setHouseholdMembers]=useState([]);
   const [invite,setInvite]=useState({name:'',contact:''});
+  const [joinCode,setJoinCode]=useState('');
   const [moreView,setMoreView]=useState('main');
   const [authForm,setAuthForm]=useState({email:'',password:''});
   const [authBusy,setAuthBusy]=useState(false),[dataBusy,setDataBusy]=useState(false),[dataReady,setDataReady]=useState(false);
@@ -638,6 +639,18 @@ export default function StuffApp() {
     }catch(e){Alert.alert('Could not create invite',e?.message||'Please try again.')}finally{setDataBusy(false)}
   }
 
+  async function joinHouseholdWithCode(){
+    const code=joinCode.trim().toUpperCase();
+    if(!code){Alert.alert('Invite code','Enter the invite code you were sent.');return}
+    if(!user){goToStuffLogin();return}
+    if(!onJoinHouseholdCode){Alert.alert('Could not join household','Invite-code joining is unavailable in this build.');return}
+    setDataBusy(true);
+    try{
+      await onJoinHouseholdCode(code);
+      setJoinCode('');
+    }catch(e){Alert.alert('Could not join household',e?.message||'The invite may be invalid or expired.')}finally{setDataBusy(false)}
+  }
+
   function removeMember(member){
     if(!user||!householdId)return;
     if(member.dbUserId===user.id&&member.role==='Owner')return;
@@ -728,6 +741,19 @@ export default function StuffApp() {
     <BottomNav tab={tab} onChange={goTab}/>
   </SafeAreaView>;
 
+  if(tab==='household'&&householdView==='join')return <SafeAreaView style={s.safe}>
+    <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
+    <ScrollView contentContainerStyle={s.pageScreen} keyboardShouldPersistTaps="handled">
+      <PageHeader eyebrow="Household" title="Join a household" lead="Use an invite code to switch to the shared household shopping list." onBack={()=>setHouseholdView('main')} backLabel="Household" />
+      <View style={s.formBlock}>
+        <Field label="Invite code" value={joinCode} onChangeText={setJoinCode} autoCapitalize="characters" placeholder="8-character code" />
+      </View>
+      <TouchableOpacity style={[s.primaryButton,dataBusy&&s.buttonDisabled]} onPress={joinHouseholdWithCode} disabled={dataBusy}>{dataBusy?<ActivityIndicator color="#FFFFFF"/>:<Text style={s.primaryButtonText}>Join household</Text>}</TouchableOpacity>
+      <Text style={s.formNote}>Use the code another Stuff household member shared with you. This is also the fallback when an invite link cannot open directly.</Text>
+    </ScrollView>
+    <BottomNav tab={tab} onChange={goTab}/>
+  </SafeAreaView>;
+
   if(tab==='household'&&householdView==='name')return <SafeAreaView style={s.safe}>
     <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
     <ScrollView contentContainerStyle={s.pageScreen} keyboardShouldPersistTaps="handled">
@@ -787,6 +813,7 @@ export default function StuffApp() {
         <MenuRow title="Household name" sub={householdName} onPress={()=>setHouseholdView('name')} />
         <MenuRow title="Members" sub={`${activeMemberCount} ${activeMemberCount===1?'member':'members'}`} onPress={()=>setHouseholdView('members')} />
         <MenuRow title="Invite someone" sub="Add another person to the shared household" onPress={()=>setHouseholdView('invite')} />
+        <MenuRow title="Join with invite code" sub="Use a code someone shared with you" onPress={()=>setHouseholdView('join')} />
       </View>
 
       <View style={s.sharedNote}>
