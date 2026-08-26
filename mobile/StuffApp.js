@@ -82,10 +82,10 @@ function MenuRow({title:rowTitle,sub,right='›',onPress,danger=false}) {
   </TouchableOpacity>;
 }
 
-function PageHeader({eyebrow,title:pageTitle,lead,onBack}) {
+function PageHeader({eyebrow,title:pageTitle,lead,onBack,backLabel='Back'}) {
   return <>
     <Text style={s.brand}>stuff{`\n`}the{`\n`}shopping<Text style={s.dot}>.</Text></Text>
-    {!!onBack&&<TouchableOpacity onPress={onBack} style={s.inlineBack}><Text style={s.inlineBackText}>‹ Account</Text></TouchableOpacity>}
+    {!!onBack&&<TouchableOpacity onPress={onBack} style={s.inlineBack}><Text style={s.inlineBackText}>‹ {backLabel}</Text></TouchableOpacity>}
     <View style={[s.pageIntro,onBack&&{marginTop:18}]}>
       <Text style={s.pageEyebrow}>{eyebrow}</Text>
       <Text style={s.pageTitle}>{pageTitle}</Text>
@@ -94,10 +94,10 @@ function PageHeader({eyebrow,title:pageTitle,lead,onBack}) {
   </>;
 }
 
-function Field({label,value,onChangeText,keyboardType='default',autoCapitalize='sentences'}) {
+function Field({label,value,onChangeText,keyboardType='default',autoCapitalize='sentences',placeholder=''}) {
   return <View style={s.fieldWrap}>
     <Text style={s.fieldLabel}>{label}</Text>
-    <TextInput style={s.field} value={value} onChangeText={onChangeText} keyboardType={keyboardType} autoCapitalize={autoCapitalize} placeholderTextColor="#8B8479" />
+    <TextInput style={s.field} value={value} onChangeText={onChangeText} keyboardType={keyboardType} autoCapitalize={autoCapitalize} placeholder={placeholder} placeholderTextColor="#8B8479" />
   </View>;
 }
 
@@ -108,6 +108,10 @@ function ToggleRow({title:rowTitle,sub,value,onValueChange}) {
   </View>;
 }
 
+function InfoBlock({title:blockTitle,children}) {
+  return <View style={s.infoBlock}><Text style={s.infoTitle}>{blockTitle}</Text><Text style={s.infoCopy}>{children}</Text></View>;
+}
+
 export default function StuffApp() {
   const webRef = useRef(null), pending = useRef([]), injected = useRef(false), retries = useRef(0), wooliesReturnTab = useRef('home');
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -116,6 +120,11 @@ export default function StuffApp() {
   const [accountView,setAccountView]=useState('main');
   const [profile,setProfile]=useState({firstName:'',lastName:'',email:'',mobile:'',suburb:'',postcode:''});
   const [preferences,setPreferences]=useState({matchMode:'best',preferSpecials:true,allowAlternatives:true,rememberBrands:true});
+  const [householdView,setHouseholdView]=useState('main');
+  const [householdName,setHouseholdName]=useState('My household');
+  const [householdMembers,setHouseholdMembers]=useState([{id:'me',name:'You',contact:'This device',role:'Owner',status:'Active'}]);
+  const [invite,setInvite]=useState({name:'',contact:''});
+  const [moreView,setMoreView]=useState('main');
   const recording=!!recState?.isRecording,count=items.length,canSend=count>0&&!busy&&!recording;
   const listLabel=useMemo(()=>count?`Your list · ${count} ${count===1?'item':'items'}`:'Your list',[count]);
 
@@ -157,32 +166,65 @@ export default function StuffApp() {
     setTimeout(()=>webRef.current?.injectJavaScript(wooliesScript(pending.current)),1000);
   }
 
-  function goTab(next){setTab(next);setAccountView('main');setStatus('')}
-  function comingSoon(label){Alert.alert(label,`${label} is ready in the screen structure. We’ll wire the underlying account data next.`)}
-  function householdInvite(){Alert.alert('Invite someone','Household invitations are the next shared-list feature to wire up.')}
-  function howItWorks(){Alert.alert('How it works','1. Speak your grocery list.\n\n2. Check the items.\n\n3. Send them to Woolies.\n\n4. Review your Woolworths cart before checkout.')}
-  function help(){Alert.alert('Help & support','Support and problem reporting will live here.')}
-  function privacy(){Alert.alert('Privacy','Stuff does not ask for or store your Woolworths password or payment details. Woolworths login and checkout stay with Woolworths. Voice recordings are sent for processing only when you tap to talk.')}
-  function terms(){Alert.alert('Terms','Terms of use and the retailer integration disclaimer will live here.')}
-  function about(){Alert.alert('Stuff the Shopping','Say what you need. We build the list and help put it into your Woolworths cart.')}
+  function goTab(next){setTab(next);setAccountView('main');setHouseholdView('main');setMoreView('main');setStatus('')}
   function openWoolworthsFromAccount(){wooliesReturnTab.current='account';pending.current=[];injected.current=false;setStatus('Woolworths on this device');setCartUrl('https://www.woolworths.com.au/');setWebKey(k=>k+1);setMode('woolies')}
   function saveProfile(){setAccountView('main');Alert.alert('Saved','Your details are saved for this app session. We’ll make them persistent when Stuff login is connected.')}
   function savePreferences(){setAccountView('main');Alert.alert('Saved','Your preferences are saved for this app session. Next we can connect them to product matching and your Stuff account.')}
   function signOut(){Alert.alert('Sign out','Stuff account login has not been connected yet, so there is no Stuff session to sign out of.')}
   function deleteAccount(){Alert.alert('Delete account','There is no stored Stuff account in this prototype yet. Once login is connected, this will permanently delete the account, household membership, preferences and stored shopping data.')}
   async function manageMicrophone(){try{await Linking.openSettings()}catch(_){Alert.alert('Settings','Open iPhone Settings and choose Stuff the Shopping to manage microphone access.')}}
+  function saveHouseholdName(){const clean=householdName.trim();if(!clean){Alert.alert('Household name','Give your household a name first.');return}setHouseholdName(clean);setHouseholdView('main');Alert.alert('Saved','Household name saved for this app session.')}
+  function sendHouseholdInvite(){const name=invite.name.trim(),contact=invite.contact.trim();if(!name||!contact){Alert.alert('Invite someone','Add their name and email or mobile number.');return}setHouseholdMembers(v=>[...v,{id:`invite-${Date.now()}`,name,contact,role:'Member',status:'Invite pending'}]);setInvite({name:'',contact:''});setHouseholdView('members');Alert.alert('Invite prepared','The member is shown as pending. Sending the real invitation will be wired when Stuff accounts are connected.')}
+  function removeMember(member){if(member.id==='me')return;Alert.alert('Remove member?',`Remove ${member.name} from this household?`,[{text:'Cancel',style:'cancel'},{text:'Remove',style:'destructive',onPress:()=>setHouseholdMembers(v=>v.filter(x=>x.id!==member.id))}])}
+  function reportProblem(){Alert.alert('Report a problem','We’ll connect this to a support channel before release. For now this confirms where problem reporting will live.')}
 
   if(mode==='woolies')return <SafeAreaView style={s.safe}><StatusBar barStyle="dark-content"/><View style={s.cartHead}><TouchableOpacity onPress={back} style={s.back}><Text style={s.backText}>‹ {wooliesReturnTab.current==='account'?'Account':'Shop'}</Text></TouchableOpacity><View style={{flex:1}}><Text style={s.cartTitle}>Woolies</Text><Text style={s.cartStatus} numberOfLines={1}>{status}</Text></View></View><WebView key={webKey} ref={webRef} source={{uri:cartUrl}} style={{flex:1}} onMessage={onMessage} onLoadEnd={onLoad} userAgent={UA} javaScriptEnabled domStorageEnabled sharedCookiesEnabled thirdPartyCookiesEnabled cacheEnabled incognito={false} setSupportMultipleWindows={false}/></SafeAreaView>;
+
+  if(tab==='household'&&householdView==='name')return <SafeAreaView style={s.safe}>
+    <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
+    <ScrollView contentContainerStyle={s.pageScreen} keyboardShouldPersistTaps="handled">
+      <PageHeader eyebrow="Household" title="Household name" lead="Give the shared home shopping space a name everyone will recognise." onBack={()=>setHouseholdView('main')} backLabel="Household" />
+      <View style={s.formBlock}><Field label="Household name" value={householdName} onChangeText={setHouseholdName} placeholder="My household" /></View>
+      <TouchableOpacity style={s.primaryButton} onPress={saveHouseholdName}><Text style={s.primaryButtonText}>Save household name</Text></TouchableOpacity>
+      <Text style={s.formNote}>This is stored for the current app session until household accounts are connected.</Text>
+    </ScrollView>
+    <BottomNav tab={tab} onChange={goTab}/>
+  </SafeAreaView>;
+
+  if(tab==='household'&&householdView==='members')return <SafeAreaView style={s.safe}>
+    <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
+    <ScrollView contentContainerStyle={s.pageScreen}>
+      <PageHeader eyebrow="Household" title="Members" lead="Everyone here will eventually be able to add to the same household shopping list." onBack={()=>setHouseholdView('main')} backLabel="Household" />
+      <View style={s.memberBlock}>
+        {householdMembers.map(member=><View key={member.id} style={s.memberRow}>
+          <View style={s.memberAvatar}><Text style={s.memberAvatarText}>{member.name.slice(0,1).toUpperCase()}</Text></View>
+          <View style={{flex:1}}><Text style={s.memberName}>{member.name}</Text><Text style={s.memberMeta}>{member.role} · {member.status}</Text><Text style={s.memberContact}>{member.contact}</Text></View>
+          {member.id!=='me'&&<TouchableOpacity onPress={()=>removeMember(member)} style={s.memberRemove}><Text style={s.memberRemoveText}>Remove</Text></TouchableOpacity>}
+        </View>)}
+      </View>
+      <TouchableOpacity style={s.primaryButton} onPress={()=>setHouseholdView('invite')}><Text style={s.primaryButtonText}>Invite someone</Text></TouchableOpacity>
+    </ScrollView>
+    <BottomNav tab={tab} onChange={goTab}/>
+  </SafeAreaView>;
+
+  if(tab==='household'&&householdView==='invite')return <SafeAreaView style={s.safe}>
+    <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
+    <ScrollView contentContainerStyle={s.pageScreen} keyboardShouldPersistTaps="handled">
+      <PageHeader eyebrow="Household" title="Invite someone" lead="Invite another person to use the same household grocery list." onBack={()=>setHouseholdView('members')} backLabel="Members" />
+      <View style={s.formBlock}>
+        <Field label="Name" value={invite.name} onChangeText={v=>setInvite(x=>({...x,name:v}))} placeholder="Name" />
+        <Field label="Email or mobile" value={invite.contact} onChangeText={v=>setInvite(x=>({...x,contact:v}))} autoCapitalize="none" placeholder="Email or mobile" />
+      </View>
+      <TouchableOpacity style={s.primaryButton} onPress={sendHouseholdInvite}><Text style={s.primaryButtonText}>Send invite</Text></TouchableOpacity>
+      <Text style={s.formNote}>Real invitations require Stuff login and a shared household database. For now we’ll capture the flow and show the invitation as pending.</Text>
+    </ScrollView>
+    <BottomNav tab={tab} onChange={goTab}/>
+  </SafeAreaView>;
 
   if(tab==='household')return <SafeAreaView style={s.safe}>
     <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
     <ScrollView contentContainerStyle={s.pageScreen}>
-      <Text style={s.brand}>stuff{`\n`}the{`\n`}shopping<Text style={s.dot}>.</Text></Text>
-      <View style={s.pageIntro}>
-        <Text style={s.pageEyebrow}>Household</Text>
-        <Text style={s.pageTitle}>Your household.</Text>
-        <Text style={s.pageLead}>One shared grocery list for the people at home.</Text>
-      </View>
+      <PageHeader eyebrow="Household" title={householdName} lead="One shared grocery list for the people at home." />
 
       <View style={s.householdHero}>
         <Text style={s.heroKicker}>SHARED SHOPPING LIST</Text>
@@ -193,9 +235,14 @@ export default function StuffApp() {
 
       <Text style={s.sectionTitle}>Household</Text>
       <View style={s.menuBlock}>
-        <MenuRow title="Household name" sub="Name this household" onPress={()=>comingSoon('Household name')} />
-        <MenuRow title="Members" sub="1 member" onPress={()=>comingSoon('Manage members')} />
-        <MenuRow title="Invite someone" sub="Let another person add to the same list" onPress={householdInvite} />
+        <MenuRow title="Household name" sub={householdName} onPress={()=>setHouseholdView('name')} />
+        <MenuRow title="Members" sub={`${householdMembers.length} ${householdMembers.length===1?'member':'members'}`} onPress={()=>setHouseholdView('members')} />
+        <MenuRow title="Invite someone" sub="Let another person add to the same list" onPress={()=>setHouseholdView('invite')} />
+      </View>
+
+      <View style={s.sharedNote}>
+        <Text style={s.sharedNoteTitle}>One household. One live list.</Text>
+        <Text style={s.sharedNoteCopy}>When login and sync are connected, every household member will see the same list and changes will update across devices.</Text>
       </View>
     </ScrollView>
     <BottomNav tab={tab} onChange={goTab}/>
@@ -204,7 +251,7 @@ export default function StuffApp() {
   if(tab==='account'&&accountView==='details')return <SafeAreaView style={s.safe}>
     <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
     <ScrollView contentContainerStyle={s.pageScreen} keyboardShouldPersistTaps="handled">
-      <PageHeader eyebrow="Your details" title="Personal details" lead="The basics we’ll use for your Stuff account and local shopping setup." onBack={()=>setAccountView('main')} />
+      <PageHeader eyebrow="Your details" title="Personal details" lead="The basics we’ll use for your Stuff account and local shopping setup." onBack={()=>setAccountView('main')} backLabel="Account" />
       <View style={s.formBlock}>
         <Field label="First name" value={profile.firstName} onChangeText={v=>setProfile(p=>({...p,firstName:v}))} />
         <Field label="Last name" value={profile.lastName} onChangeText={v=>setProfile(p=>({...p,lastName:v}))} />
@@ -222,7 +269,7 @@ export default function StuffApp() {
   if(tab==='account'&&accountView==='woolworths')return <SafeAreaView style={s.safe}>
     <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
     <ScrollView contentContainerStyle={s.pageScreen}>
-      <PageHeader eyebrow="Shopping service" title="Woolworths" lead="Your Woolworths account stays separate from your Stuff account." onBack={()=>setAccountView('main')} />
+      <PageHeader eyebrow="Shopping service" title="Woolworths" lead="Your Woolworths account stays separate from your Stuff account." onBack={()=>setAccountView('main')} backLabel="Account" />
       <View style={s.wooliesAccountCard}>
         <View style={s.wooliesAccountMark}><Text style={s.wooliesAccountMarkText}>W</Text></View>
         <View style={{flex:1}}><Text style={s.wooliesAccountTitle}>Woolworths on this device</Text><Text style={s.wooliesAccountSub}>Sign in directly with Woolworths when you need to.</Text></View>
@@ -240,7 +287,7 @@ export default function StuffApp() {
   if(tab==='account'&&accountView==='preferences')return <SafeAreaView style={s.safe}>
     <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
     <ScrollView contentContainerStyle={s.pageScreen}>
-      <PageHeader eyebrow="Shopping preferences" title="Product preferences" lead="Tell Stuff how you generally want products chosen." onBack={()=>setAccountView('main')} />
+      <PageHeader eyebrow="Shopping preferences" title="Product preferences" lead="Tell Stuff how you generally want products chosen." onBack={()=>setAccountView('main')} backLabel="Account" />
 
       <Text style={s.sectionTitle}>Product matching</Text>
       <View style={s.segmentWrap}>
@@ -295,21 +342,79 @@ export default function StuffApp() {
     <BottomNav tab={tab} onChange={goTab}/>
   </SafeAreaView>;
 
+  if(tab==='more'&&moreView==='how')return <SafeAreaView style={s.safe}>
+    <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
+    <ScrollView contentContainerStyle={s.pageScreen}>
+      <PageHeader eyebrow="More" title="How it works" lead="From a spoken list to a Woolworths cart, without making grocery shopping another admin job." onBack={()=>setMoreView('main')} backLabel="More" />
+      <View style={s.stepsBlock}>
+        <View style={s.stepCard}><Text style={s.stepNumber}>1</Text><View style={{flex:1}}><Text style={s.stepTitle}>Say what you need</Text><Text style={s.stepCopy}>Tap to talk and say the groceries naturally. Add more later if you remember something else.</Text></View></View>
+        <View style={s.stepCard}><Text style={s.stepNumber}>2</Text><View style={{flex:1}}><Text style={s.stepTitle}>Check the list</Text><Text style={s.stepCopy}>Stuff turns what you said into a simple list you can edit, remove from or share.</Text></View></View>
+        <View style={s.stepCard}><Text style={s.stepNumber}>3</Text><View style={{flex:1}}><Text style={s.stepTitle}>Send to Woolies</Text><Text style={s.stepCopy}>Stuff finds confident product matches and adds them to your Woolworths cart.</Text></View></View>
+        <View style={s.stepCard}><Text style={s.stepNumber}>4</Text><View style={{flex:1}}><Text style={s.stepTitle}>You review and checkout</Text><Text style={s.stepCopy}>Check every product, price and quantity inside Woolworths before completing your order.</Text></View></View>
+      </View>
+    </ScrollView>
+    <BottomNav tab={tab} onChange={goTab}/>
+  </SafeAreaView>;
+
+  if(tab==='more'&&moreView==='help')return <SafeAreaView style={s.safe}>
+    <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
+    <ScrollView contentContainerStyle={s.pageScreen}>
+      <PageHeader eyebrow="More" title="Help & support" lead="If something goes wrong, this is where you’ll get help." onBack={()=>setMoreView('main')} backLabel="More" />
+      <View style={s.menuBlockWithTop}>
+        <MenuRow title="Report a problem" sub="Tell us what went wrong" onPress={reportProblem} />
+        <MenuRow title="Shopping list help" sub="Voice, editing and shared lists" onPress={()=>setMoreView('how')} />
+        <MenuRow title="Woolworths help" sub="Login, cart and checkout remain with Woolworths" onPress={()=>setMoreView('privacy')} />
+      </View>
+      <InfoBlock title="Before release">We’ll add a real support channel and diagnostic information here. The app should never ask you to send a Woolworths password or payment details to Stuff support.</InfoBlock>
+    </ScrollView>
+    <BottomNav tab={tab} onChange={goTab}/>
+  </SafeAreaView>;
+
+  if(tab==='more'&&moreView==='privacy')return <SafeAreaView style={s.safe}>
+    <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
+    <ScrollView contentContainerStyle={s.pageScreen}>
+      <PageHeader eyebrow="More" title="Privacy" lead="A simple view of what Stuff uses and what stays with the retailer." onBack={()=>setMoreView('main')} backLabel="More" />
+      <InfoBlock title="Voice">Your microphone is used only when you tap to talk. The recording is sent for processing so Stuff can turn it into grocery items.</InfoBlock>
+      <InfoBlock title="Stuff account">When login is added, Stuff will store the account details, household membership, preferences and shared shopping data needed to provide the service.</InfoBlock>
+      <InfoBlock title="Woolworths">Stuff does not ask for or store your Woolworths password or payment details. Retailer login, saved payment methods and checkout stay with Woolworths.</InfoBlock>
+      <InfoBlock title="Household sharing">People you invite to the same household will be able to see and change the shared grocery list once household sync is connected.</InfoBlock>
+    </ScrollView>
+    <BottomNav tab={tab} onChange={goTab}/>
+  </SafeAreaView>;
+
+  if(tab==='more'&&moreView==='terms')return <SafeAreaView style={s.safe}>
+    <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
+    <ScrollView contentContainerStyle={s.pageScreen}>
+      <PageHeader eyebrow="More" title="Terms" lead="The important boundaries of the current service." onBack={()=>setMoreView('main')} backLabel="More" />
+      <InfoBlock title="You stay in control">Stuff helps prepare a shopping list and may add suggested products to a retailer cart. You must review the retailer cart before ordering.</InfoBlock>
+      <InfoBlock title="Prices and availability">Retailer prices, specials, availability, substitutions and delivery options can change. Woolworths remains the source of truth for the final order.</InfoBlock>
+      <InfoBlock title="Checkout and payment">Stuff does not submit checkout or payment. Ordering and payment are completed with Woolworths.</InfoBlock>
+      <InfoBlock title="Current integration">This MVP uses Woolworths website behaviour and is not an official Woolworths integration. Website behaviour may change before a retailer-approved integration is available.</InfoBlock>
+    </ScrollView>
+    <BottomNav tab={tab} onChange={goTab}/>
+  </SafeAreaView>;
+
+  if(tab==='more'&&moreView==='about')return <SafeAreaView style={s.safe}>
+    <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
+    <ScrollView contentContainerStyle={s.pageScreen}>
+      <PageHeader eyebrow="More" title="About Stuff the Shopping" lead="Less grocery admin. More getting it done." onBack={()=>setMoreView('main')} backLabel="More" />
+      <View style={s.aboutHero}><Text style={s.aboutBig}>stuff{`\n`}the{`\n`}shopping<Text style={s.dot}>.</Text></Text><Text style={s.aboutTag}>We’ll do the groceries.</Text></View>
+      <InfoBlock title="What we’re building">Say what you need, keep one shared household list and move it into a retailer cart without manually searching for every product.</InfoBlock>
+      <Text style={s.version}>Stuff the Shopping · MVP</Text>
+    </ScrollView>
+    <BottomNav tab={tab} onChange={goTab}/>
+  </SafeAreaView>;
+
   if(tab==='more')return <SafeAreaView style={s.safe}>
     <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
     <ScrollView contentContainerStyle={s.pageScreen}>
-      <Text style={s.brand}>stuff{`\n`}the{`\n`}shopping<Text style={s.dot}>.</Text></Text>
-      <View style={s.pageIntro}>
-        <Text style={s.pageEyebrow}>More</Text>
-        <Text style={s.pageTitle}>Help, privacy & about.</Text>
-      </View>
-
-      <View style={[s.menuBlock,{marginTop:24}]}> 
-        <MenuRow title="How it works" sub="From voice to Woolies cart" onPress={howItWorks} />
-        <MenuRow title="Help & support" sub="Get help or report a problem" onPress={help} />
-        <MenuRow title="Privacy" sub="Voice, account and retailer data" onPress={privacy} />
-        <MenuRow title="Terms" sub="Terms of use and retailer disclaimer" onPress={terms} />
-        <MenuRow title="About Stuff the Shopping" onPress={about} />
+      <PageHeader eyebrow="More" title="Help, privacy & about." />
+      <View style={s.menuBlockWithTop}>
+        <MenuRow title="How it works" sub="From voice to Woolies cart" onPress={()=>setMoreView('how')} />
+        <MenuRow title="Help & support" sub="Get help or report a problem" onPress={()=>setMoreView('help')} />
+        <MenuRow title="Privacy" sub="Voice, account and retailer data" onPress={()=>setMoreView('privacy')} />
+        <MenuRow title="Terms" sub="Terms of use and retailer disclaimer" onPress={()=>setMoreView('terms')} />
+        <MenuRow title="About Stuff the Shopping" onPress={()=>setMoreView('about')} />
       </View>
       <Text style={s.version}>Stuff the Shopping · MVP</Text>
     </ScrollView>
@@ -435,6 +540,7 @@ const s=StyleSheet.create({
   heroButtonText:{color:'#FFFFFF',fontSize:13,fontWeight:'900'},
   sectionTitle:{marginTop:28,marginBottom:8,color:'#171717',fontSize:18,fontWeight:'900'},
   menuBlock:{borderTopWidth:StyleSheet.hairlineWidth,borderTopColor:'#BEB6A7',borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:'#BEB6A7'},
+  menuBlockWithTop:{marginTop:24,borderTopWidth:StyleSheet.hairlineWidth,borderTopColor:'#BEB6A7',borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:'#BEB6A7'},
   menuRow:{minHeight:66,flexDirection:'row',alignItems:'center',borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:'#D4CCBE'},
   menuTitle:{color:'#171717',fontSize:16,fontWeight:'800'},
   menuSub:{marginTop:4,color:'#69635A',fontSize:12,lineHeight:16,fontWeight:'600'},
@@ -443,6 +549,9 @@ const s=StyleSheet.create({
   securityNote:{marginTop:14,padding:14,borderRadius:14,backgroundColor:'#FFF8D9'},
   securityTitle:{color:'#171717',fontSize:13,fontWeight:'900'},
   securityCopy:{marginTop:5,color:'#5D574B',fontSize:12,lineHeight:17,fontWeight:'600'},
+  sharedNote:{marginTop:18,padding:16,borderRadius:16,backgroundColor:'#FFF8D9'},
+  sharedNoteTitle:{color:'#171717',fontSize:14,fontWeight:'900'},
+  sharedNoteCopy:{marginTop:5,color:'#5D574B',fontSize:12,lineHeight:17,fontWeight:'600'},
   inlineBack:{marginTop:20,alignSelf:'flex-start',paddingVertical:4,paddingRight:10},
   inlineBackText:{color:'#171717',fontSize:14,fontWeight:'900'},
   formBlock:{marginTop:24},
@@ -463,6 +572,26 @@ const s=StyleSheet.create({
   segmentText:{color:'#55514A',fontSize:12,fontWeight:'800',textAlign:'center'},
   segmentTextActive:{color:'#FFFFFF'},
   toggleRow:{minHeight:72,flexDirection:'row',alignItems:'center',borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:'#D4CCBE'},
+  memberBlock:{marginTop:24,borderTopWidth:StyleSheet.hairlineWidth,borderTopColor:'#BEB6A7'},
+  memberRow:{minHeight:78,flexDirection:'row',alignItems:'center',borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:'#D4CCBE'},
+  memberAvatar:{width:42,height:42,borderRadius:21,backgroundColor:'#F5D95E',alignItems:'center',justifyContent:'center',marginRight:12},
+  memberAvatarText:{color:'#171717',fontSize:17,fontWeight:'900'},
+  memberName:{color:'#171717',fontSize:15,fontWeight:'900'},
+  memberMeta:{marginTop:3,color:'#69635A',fontSize:11,fontWeight:'700'},
+  memberContact:{marginTop:2,color:'#8B8479',fontSize:11,fontWeight:'600'},
+  memberRemove:{paddingVertical:8,paddingLeft:10},
+  memberRemoveText:{color:'#C83D24',fontSize:11,fontWeight:'800'},
+  stepsBlock:{marginTop:24,gap:10},
+  stepCard:{padding:16,borderRadius:18,backgroundColor:'#FFFDF7',borderWidth:1,borderColor:'#D4CCBE',flexDirection:'row',gap:14},
+  stepNumber:{width:28,height:28,borderRadius:14,backgroundColor:'#F4512C',color:'#FFFFFF',fontSize:14,lineHeight:28,textAlign:'center',fontWeight:'900'},
+  stepTitle:{color:'#171717',fontSize:15,fontWeight:'900'},
+  stepCopy:{marginTop:5,color:'#69635A',fontSize:12,lineHeight:17,fontWeight:'600'},
+  infoBlock:{marginTop:16,padding:16,borderRadius:16,backgroundColor:'#FFFDF7',borderWidth:1,borderColor:'#D4CCBE'},
+  infoTitle:{color:'#171717',fontSize:14,fontWeight:'900'},
+  infoCopy:{marginTop:6,color:'#5D574B',fontSize:12,lineHeight:18,fontWeight:'600'},
+  aboutHero:{marginTop:24,padding:20,borderRadius:22,backgroundColor:'#F5D95E'},
+  aboutBig:{color:'#171717',fontSize:38,lineHeight:33,fontWeight:'900',letterSpacing:-2},
+  aboutTag:{marginTop:18,color:'#4F493B',fontSize:15,fontWeight:'800'},
   version:{marginTop:28,color:'#8B8479',fontSize:11,textAlign:'center',fontWeight:'700'},
   bottomNav:{minHeight:82,backgroundColor:'#000000',paddingHorizontal:12,paddingTop:10,paddingBottom:10,flexDirection:'row',alignItems:'center',justifyContent:'space-around'},
   navItem:{flex:1,alignItems:'center',justifyContent:'center'},
