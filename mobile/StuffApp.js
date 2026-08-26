@@ -8,8 +8,11 @@ import {
   cancelStuffInvite,
   createStuffInvite,
   createStuffSupportRequest,
+  clearStuffHouseholdProductMemory,
   deleteStuffAccount,
+  forgetStuffHouseholdProduct,
   loadStuffBundle,
+  rememberStuffHouseholdProduct,
   removeStuffMember,
   saveStuffHouseholdName,
   saveStuffList,
@@ -63,19 +66,23 @@ function mergeItems(current, actions) {
   return next;
 }
 
-function wooliesScript(items, preferences={}) {
+function wooliesScript(items, preferences={}, productMemory=[]) {
   const payload = JSON.stringify(items.slice(0, 60));
+  const memoryPayload = JSON.stringify((productMemory||[]).slice(0,120));
   const prefsPayload = JSON.stringify({
     matchMode: preferences.matchMode==='cheapest'?'cheapest':'best',
     preferSpecials: preferences.preferSpecials!==false,
     allowAlternatives: preferences.allowAlternatives!==false,
+    rememberBrands: preferences.rememberBrands!==false,
   });
   return `
 (async()=>{
- const items=${payload},prefs=${prefsPayload},sleep=ms=>new Promise(r=>setTimeout(r,ms));
+ const items=${payload},prefs=${prefsPayload},memories=${memoryPayload},sleep=ms=>new Promise(r=>setTimeout(r,ms));
  const post=(type,message,extra={})=>{try{window.ReactNativeWebView.postMessage(JSON.stringify({type,message,...extra}))}catch(_){}};
  const txt=p=>(String(p.DisplayName||p.Name||'')+' '+String(p.Brand||'')+' '+String(p.PackageSize||'')).toLowerCase();
  const req=i=>(String(i.name||'')+' '+String(i.unit||'')).toLowerCase();
+ const memoryKey=v=>String(v||'').toLowerCase().replace(/\b(on special|cheapest|best value|value option)\b/g,'').replace(/\s+/g,' ').trim();
+ const memoryFor=i=>memories.find(m=>String(m.request_key||'')===memoryKey(i.name));
  const unit=v=>String(v||'').toLowerCase().replace(/litres?/g,'l').replace(/millilitres?/g,'ml').replace(/kilograms?/g,'kg').replace(/grams?/g,'g').trim();
  const base=(n,u)=>(u==='kg'||u==='l')?n*1000:(u==='g'||u==='ml')?n:null;
  const measure=i=>{const s=req(i),m=s.match(/\\b(\\d+(?:\\.\\d+)?)\\s*(kg|g|l|ml)\\b/i);if(m)return{n:+m[1],u:m[2],b:base(+m[1],m[2])};const q=+(i.qty??i.quantity??1),u=unit(i.unit);return /^(kg|g|l|ml)$/.test(u)?{n:q,u,b:base(q,u)}:null};
@@ -83,31 +90,35 @@ function wooliesScript(items, preferences={}) {
  const query=i=>{let q=String(i.name||'').replace(/\\b(on special|cheapest|best value|value option)\\b/gi,'').trim().replace(/weet\\s*-?\\s*a?bix|weetbix|weet bix/gi,'Weet-Bix');if(/baby (roma )?tomato/i.test(req(i)))q='cherry tomatoes';const m=measure(i);if(m&&!q.toLowerCase().includes(String(m.n)+m.u))q+=' '+m.n+m.u;return q};
  const words=s=>String(s||'').toLowerCase().split(/[^a-z0-9]+/).filter(w=>w&&!['the','a','an','of','and','for','pack','packet','bag','box','large','small','medium'].includes(w));
  const bad=(i,p)=>{const r=req(i),t=txt(p);if(/baby (roma )?tomato/.test(r)){if(!t.includes('tomato')||!['cherry','grape','cocktail','solanato','mini'].some(x=>t.includes(x)))return true;if(['diced','crushed','peeled','passata','paste','sauce','canned','tinned','mutti'].some(x=>t.includes(x)))return true}if(r.includes('tomato')&&['diced','crushed','peeled','passata','paste','sauce','canned','tinned'].some(x=>t.includes(x)))return true;if(r.includes('carrot')&&!r.includes('baby')&&t.includes('baby carrot'))return true;if(r.includes('bread')&&['bread mix','flour','breadcrumb'].some(x=>t.includes(x)))return true;const a=measure(i),b=pMeasure(p);if(a?.b&&b?.b){const ratio=b.b/a.b;if(ratio<.6||ratio>1.55)return true}return false};
- const score=(i,p)=>{if(bad(i,p))return-9999;const q=query(i),t=txt(p),ws=words(q);let s=ws.filter(w=>t.includes(w)).length*16;if(t.includes(q.toLowerCase()))s+=45;const r=req(i),a=measure(i),b=pMeasure(p);if(a?.b){if(!b?.b)s-=50;else{const x=b.b/a.b;s+=x>=.95&&x<=1.05?140:x>=.85&&x<=1.15?80:x>=.7&&x<=1.3?25:-200}}if(/\\b(large|big|family)\\b/.test(r)&&b?.b)s+=Math.min(70,b.b/20);if(/baby (roma )?tomato/.test(r)&&['cherry','grape','cocktail','mini'].some(x=>t.includes(x)))s+=150;if(r.includes('white bread')&&t.includes('white')&&(t.includes('bread')||t.includes('loaf')))s+=60;if(prefs.preferSpecials&&p.IsOnSpecial)s+=35;if(p.IsAvailable===false||p.IsInStock===false)s-=200;return s};
+ const score=(i,p)=>{if(bad(i,p))return-9999;const q=query(i),t=txt(p),ws=words(q);let s=ws.filter(w=>t.includes(w)).length*16;if(t.includes(q.toLowerCase()))s+=45;const r=req(i),a=measure(i),b=pMeasure(p);if(a?.b){if(!b?.b)s-=50;else{const x=b.b/a.b;s+=x>=.95&&x<=1.05?140:x>=.85&&x<=1.15?80:x>=.7&&x<=1.3?25:-200}}if(/\\b(large|big|family)\\b/.test(r)&&b?.b)s+=Math.min(70,b.b/20);if(/baby (roma )?tomato/.test(r)&&['cherry','grape','cocktail','mini'].some(x=>t.includes(x)))s+=150;if(r.includes('white bread')&&t.includes('white')&&(t.includes('bread')||t.includes('loaf')))s+=60;if((prefs.preferSpecials||/\bon special\b/.test(r))&&p.IsOnSpecial)s+=/\bon special\b/.test(r)?180:35;const mem=memoryFor(i);if(prefs.rememberBrands&&mem&&+mem.times_used>=2&&String(mem.product_id)===String(p.Stockcode)&&!/\b(cheapest|best value|value option|on special)\b/.test(r))s+=Math.min(260,100+(+mem.times_used*35));if(p.IsAvailable===false||p.IsInStock===false)s-=200;return s};
  async function search(i){const q=query(i),res=await fetch('/apis/ui/Search/products',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json, text/plain, */*'},credentials:'same-origin',body:JSON.stringify({Filters:[],IsSpecial:false,Location:'/shop/search/products?searchTerm='+encodeURIComponent(q),PageNumber:1,PageSize:30,SearchTerm:q,SortType:'TraderRelevance',IsHideEverydayMarketProducts:false,ExcludeSearchTypes:['UntraceableVendors'],GpBoost:0,GroupEdmVariants:false,EnableAdReRanking:false})});if(!res.ok)throw Error('search');const d=await res.json(),out=[];for(const g of d?.Products||[])for(const p of g?.Products||[])out.push(p);return out}
  const cartQty=i=>{const q=+(i.qty??i.quantity??1)||1;if(measure(i))return 1;return Math.max(1,Math.min(6,Math.round(q)))};
  async function add(i,p){const res=await fetch('/api/v3/ui/trolley/update',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json, text/plain, */*'},credentials:'same-origin',body:JSON.stringify({items:[{stockcode:+p.Stockcode,quantity:cartQty(i),source:p.Source||'SearchServiceSearchProducts',diagnostics:p.Diagnostics||'0',searchTerm:query(i),evaluateRewardPoints:false,offerId:p.OfferId??null,profileId:null,priceLevel:null}]})});if(!res.ok)return false;const raw=await res.text();try{const d=raw?JSON.parse(raw):null;if(d&&(d.Success===false||d.success===false))return false}catch(_){}return true}
- try{post('WOOLIES_STATUS','Matching your groceries…');const chosen=[],unmatched=[],used=new Set();for(let n=0;n<items.length;n++){const i=items[n];post('WOOLIES_STATUS','Matching '+(n+1)+' of '+items.length+': '+i.name);let ps=[];try{ps=await search(i)}catch(_){unmatched.push(i.name);continue}const ws=words(query(i)),needed=ws.length===1?1:Math.min(2,ws.length);let ranked=ps.map(p=>({p,s:score(i,p),hits:ws.filter(w=>txt(p).includes(w)).length,price:+(p.Price||999)})).filter(x=>x.p?.Stockcode&&x.s>=20&&x.hits>=needed);if(!ranked.length){unmatched.push(i.name);continue}const bestScore=Math.max(...ranked.map(x=>x.s));ranked=ranked.filter(x=>x.s>=bestScore-(prefs.allowAlternatives?35:12));if(!prefs.allowAlternatives){const exactQuery=query(i).toLowerCase();ranked=ranked.filter(x=>x.hits===ws.length||txt(x.p).includes(exactQuery));if(!ranked.length){unmatched.push(i.name);continue}}ranked.sort((a,b)=>prefs.matchMode==='cheapest'?(a.price-b.price||b.s-a.s):(b.s-a.s||a.price-b.price));const p=ranked[0]?.p;if(!p||used.has(String(p.Stockcode))){unmatched.push(i.name);continue}used.add(String(p.Stockcode));chosen.push([i,p]);await sleep(120)}let added=0,failed=0;for(let n=0;n<chosen.length;n++){post('WOOLIES_STATUS','Adding '+(n+1)+' of '+chosen.length+': '+chosen[n][0].name);(await add(...chosen[n]))?added++:failed++;await sleep(220)}const message=added+' products added.'+(unmatched.length?' Could not confidently match: '+unmatched.join(', ')+'.':'')+(failed?' '+failed+' failed to add.':'');post('WOOLIES_DONE',message,{added,failed,unmatched,success:added>0})}catch(e){post('WOOLIES_DONE','Could not finish the Woolies shop.',{added:0,success:false})}
+ try{post('WOOLIES_STATUS','Matching your groceries…');const chosen=[],unmatched=[],used=new Set();for(let n=0;n<items.length;n++){const i=items[n];post('WOOLIES_STATUS','Matching '+(n+1)+' of '+items.length+': '+i.name);let ps=[];try{ps=await search(i)}catch(_){unmatched.push(i.name);continue}const ws=words(query(i)),needed=ws.length===1?1:Math.min(2,ws.length);let ranked=ps.map(p=>({p,s:score(i,p),hits:ws.filter(w=>txt(p).includes(w)).length,price:+(p.Price||999)})).filter(x=>x.p?.Stockcode&&x.s>=20&&x.hits>=needed);if(!ranked.length){unmatched.push(i.name);continue}const bestScore=Math.max(...ranked.map(x=>x.s));ranked=ranked.filter(x=>x.s>=bestScore-(prefs.allowAlternatives?35:12));if(!prefs.allowAlternatives){const exactQuery=query(i).toLowerCase();ranked=ranked.filter(x=>x.hits===ws.length||txt(x.p).includes(exactQuery));if(!ranked.length){unmatched.push(i.name);continue}}ranked.sort((a,b)=>(prefs.matchMode==='cheapest'||/\b(cheapest|best value|value option)\b/.test(req(i)))?(a.price-b.price||b.s-a.s):(b.s-a.s||a.price-b.price));const p=ranked[0]?.p;if(!p||used.has(String(p.Stockcode))){unmatched.push(i.name);continue}used.add(String(p.Stockcode));chosen.push([i,p]);await sleep(120)}let added=0,failed=0,remembered=[];for(let n=0;n<chosen.length;n++){const i=chosen[n][0],p=chosen[n][1];post('WOOLIES_STATUS','Adding '+(n+1)+' of '+chosen.length+': '+i.name);if(await add(i,p)){added++;remembered.push({request:i.name,productId:String(p.Stockcode),productName:p.DisplayName||p.Name||'',brand:p.Brand||'',size:p.PackageSize||''})}else failed++;await sleep(220)}const message=added+' products added.'+(unmatched.length?' Could not confidently match: '+unmatched.join(', ')+'.':'')+(failed?' '+failed+' failed to add.':'');post('WOOLIES_DONE',message,{added,failed,unmatched,remembered,success:added>0})}catch(e){post('WOOLIES_DONE','Could not finish the Woolies shop.',{added:0,success:false})}
  return true;
 })();true;`;
 }
 
 
-function colesCompareScript(items, preferences={}) {
+function colesCompareScript(items, preferences={}, productMemory=[]) {
   const payload = JSON.stringify(items.slice(0, 60));
+  const memoryPayload = JSON.stringify((productMemory||[]).slice(0,120));
   const prefsPayload = JSON.stringify({
     matchMode: preferences.matchMode==='cheapest'?'cheapest':'best',
     preferSpecials: preferences.preferSpecials!==false,
     allowAlternatives: preferences.allowAlternatives!==false,
+    rememberBrands: preferences.rememberBrands!==false,
   });
   return `
 (async()=>{
- const items=${payload},prefs=${prefsPayload};
+ const items=${payload},prefs=${prefsPayload},memories=${memoryPayload};
  const post=(type,message,extra={})=>{try{window.ReactNativeWebView.postMessage(JSON.stringify({type,message,...extra}))}catch(_){}};
  const nextData=window.__NEXT_DATA__||(()=>{try{return JSON.parse(document.getElementById('__NEXT_DATA__')?.textContent||'{}')}catch(_){return{}}})();
  const buildId=nextData?.buildId;
  if(!buildId){post('COLES_DONE','Could not read Coles product data.',{matches:[],unmatched:items.map(i=>i.name),total:0,error:'build'});return true}
  const req=i=>(String(i.name||'')+' '+String(i.unit||'')).toLowerCase();
+ const memoryKey=v=>String(v||'').toLowerCase().replace(/\b(on special|cheapest|best value|value option)\b/g,'').replace(/\s+/g,' ').trim();
+ const memoryFor=i=>memories.find(m=>String(m.request_key||'')===memoryKey(i.name));
  const unit=v=>String(v||'').toLowerCase().replace(/litres?/g,'l').replace(/millilitres?/g,'ml').replace(/kilograms?/g,'kg').replace(/grams?/g,'g').trim();
  const base=(n,u)=>(u==='kg'||u==='l')?n*1000:(u==='g'||u==='ml')?n:null;
  const measure=i=>{const s=req(i),m=s.match(/\\b(\\d+(?:\\.\\d+)?)\\s*(kg|g|l|ml)\\b/i);if(m)return{n:+m[1],u:m[2],b:base(+m[1],m[2])};const q=+(i.qty??i.quantity??1),u=unit(i.unit);return /^(kg|g|l|ml)$/.test(u)?{n:q,u,b:base(q,u)}:null};
@@ -119,10 +130,10 @@ function colesCompareScript(items, preferences={}) {
  const price=p=>Number(pricing(p).now||pricing(p).price||999);
  const isSpecial=p=>{const t=String(pricing(p).promotionType||'').toUpperCase();return !!pricing(p).was||['SPECIAL','DOWN','MULTIBUY','PERCENT_OFF'].includes(t)};
  const bad=(i,p)=>{const r=req(i),t=txt(p);if(/baby (roma )?tomato/.test(r)){if(!t.includes('tomato')||!['cherry','grape','cocktail','solanato','mini'].some(x=>t.includes(x)))return true;if(['diced','crushed','peeled','passata','paste','sauce','canned','tinned','mutti'].some(x=>t.includes(x)))return true}if(r.includes('tomato')&&['diced','crushed','peeled','passata','paste','sauce','canned','tinned'].some(x=>t.includes(x)))return true;if(r.includes('carrot')&&!r.includes('baby')&&t.includes('baby carrot'))return true;if(r.includes('bread')&&['bread mix','flour','breadcrumb'].some(x=>t.includes(x)))return true;const a=measure(i),b=pMeasure(p);if(a?.b&&b?.b){const ratio=b.b/a.b;if(ratio<.6||ratio>1.55)return true}return false};
- const score=(i,p)=>{if(bad(i,p))return-9999;const q=query(i),t=txt(p),ws=words(q);let s=ws.filter(w=>t.includes(w)).length*16;if(t.includes(q.toLowerCase()))s+=45;const a=measure(i),b=pMeasure(p);if(a?.b){if(!b?.b)s-=50;else{const x=b.b/a.b;s+=x>=.95&&x<=1.05?140:x>=.85&&x<=1.15?80:x>=.7&&x<=1.3?25:-200}}if(prefs.preferSpecials&&isSpecial(p))s+=35;if(p?.availability===false)s-=200;return s};
+ const score=(i,p)=>{if(bad(i,p))return-9999;const q=query(i),t=txt(p),ws=words(q);let s=ws.filter(w=>t.includes(w)).length*16;if(t.includes(q.toLowerCase()))s+=45;const a=measure(i),b=pMeasure(p);if(a?.b){if(!b?.b)s-=50;else{const x=b.b/a.b;s+=x>=.95&&x<=1.05?140:x>=.85&&x<=1.15?80:x>=.7&&x<=1.3?25:-200}}if((prefs.preferSpecials||/\bon special\b/.test(r))&&isSpecial(p))s+=/\bon special\b/.test(r)?180:35;const mem=memoryFor(i);if(prefs.rememberBrands&&mem&&+mem.times_used>=2&&String(mem.product_id)===String(p?.id)&&!/\b(cheapest|best value|value option|on special)\b/.test(r))s+=Math.min(260,100+(+mem.times_used*35));if(p?.availability===false)s-=200;return s};
  async function search(i){const q=query(i),url='/_next/data/'+encodeURIComponent(buildId)+'/en/search/products.json?q='+encodeURIComponent(q);const res=await fetch(url,{credentials:'same-origin',headers:{Accept:'application/json'}});if(!res.ok)throw Error('search');const d=await res.json();return d?.pageProps?.searchResults?.results||[]}
  const qty=i=>measure(i)?1:Math.max(1,Math.min(6,Math.round(+(i.qty??i.quantity??1)||1)));
- try{const matches=[],unmatched=[];let total=0;for(let n=0;n<items.length;n++){const i=items[n];post('COLES_STATUS','Checking '+(n+1)+' of '+items.length+': '+i.name);let ps=[];try{ps=await search(i)}catch(_){unmatched.push(i.name);continue}const ws=words(query(i)),needed=ws.length===1?1:Math.min(2,ws.length);let ranked=ps.map(p=>({p,s:score(i,p),hits:ws.filter(w=>txt(p).includes(w)).length,price:price(p)})).filter(x=>x.p?.id&&x.price<999&&x.s>=20&&x.hits>=needed);if(!ranked.length){unmatched.push(i.name);continue}const bestScore=Math.max(...ranked.map(x=>x.s));ranked=ranked.filter(x=>x.s>=bestScore-(prefs.allowAlternatives?35:12));if(!prefs.allowAlternatives){const exact=query(i).toLowerCase();ranked=ranked.filter(x=>x.hits===ws.length||txt(x.p).includes(exact));if(!ranked.length){unmatched.push(i.name);continue}}ranked.sort((a,b)=>prefs.matchMode==='cheapest'?(a.price-b.price||b.s-a.s):(b.s-a.s||a.price-b.price));const x=ranked[0],p=x.p,mult=qty(i),line=+(x.price*mult).toFixed(2);total+=line;matches.push({request:i.name,product:p.name||i.name,brand:p.brand||'',size:p.size||'',price:x.price,quantity:mult,lineTotal:line,special:isSpecial(p),productId:p.id})}post('COLES_DONE','Coles check complete.',{matches,unmatched,total:+total.toFixed(2)})}catch(e){post('COLES_DONE','Could not finish the Coles check.',{matches:[],unmatched:items.map(i=>i.name),total:0,error:String(e?.message||e)})}
+ try{const matches=[],unmatched=[];let total=0;for(let n=0;n<items.length;n++){const i=items[n];post('COLES_STATUS','Checking '+(n+1)+' of '+items.length+': '+i.name);let ps=[];try{ps=await search(i)}catch(_){unmatched.push(i.name);continue}const ws=words(query(i)),needed=ws.length===1?1:Math.min(2,ws.length);let ranked=ps.map(p=>({p,s:score(i,p),hits:ws.filter(w=>txt(p).includes(w)).length,price:price(p)})).filter(x=>x.p?.id&&x.price<999&&x.s>=20&&x.hits>=needed);if(!ranked.length){unmatched.push(i.name);continue}const bestScore=Math.max(...ranked.map(x=>x.s));ranked=ranked.filter(x=>x.s>=bestScore-(prefs.allowAlternatives?35:12));if(!prefs.allowAlternatives){const exact=query(i).toLowerCase();ranked=ranked.filter(x=>x.hits===ws.length||txt(x.p).includes(exact));if(!ranked.length){unmatched.push(i.name);continue}}ranked.sort((a,b)=>(prefs.matchMode==='cheapest'||/\b(cheapest|best value|value option)\b/.test(req(i)))?(a.price-b.price||b.s-a.s):(b.s-a.s||a.price-b.price));const x=ranked[0],p=x.p,mult=qty(i),line=+(x.price*mult).toFixed(2);total+=line;matches.push({request:i.name,product:p.name||i.name,brand:p.brand||'',size:p.size||'',price:x.price,quantity:mult,lineTotal:line,special:isSpecial(p),productId:p.id})}post('COLES_DONE','Coles check complete.',{matches,unmatched,total:+total.toFixed(2)})}catch(e){post('COLES_DONE','Could not finish the Coles check.',{matches:[],unmatched:items.map(i=>i.name),total:0,error:String(e?.message||e)})}
  return true;
 })();true;`;
 }
@@ -249,6 +260,7 @@ export default function StuffApp() {
   const [profile,setProfile]=useState({firstName:'',lastName:'',email:'',mobile:'',suburb:'',postcode:''});
   const [preferences,setPreferences]=useState({preferredSupermarket:'woolworths',matchMode:'best',preferSpecials:true,allowAlternatives:true,rememberBrands:true});
   const [colesResults,setColesResults]=useState(null);
+  const [productMemory,setProductMemory]=useState([]);
   const [colesCartUrl,setColesCartUrl]=useState('https://www.coles.com.au/');
   const [householdView,setHouseholdView]=useState('main');
   const [householdId,setHouseholdId]=useState(null);
@@ -285,6 +297,7 @@ export default function StuffApp() {
       setHouseholdId(null);
       setHouseholdName('My household');
       setHouseholdMembers([]);
+      setProductMemory([]);
       setProfile({firstName:'',lastName:'',email:'',mobile:'',suburb:'',postcode:''});
       setPreferences({preferredSupermarket:'woolworths',matchMode:'best',preferSpecials:true,allowAlternatives:true,rememberBrands:true});
       lastSyncedList.current='';
@@ -300,6 +313,7 @@ export default function StuffApp() {
         if(cancelled)return;
         const p=bundle?.profile||{},pref=bundle?.preferences||{};
         setHouseholdId(bundle?.householdId||null);
+        setProductMemory(Array.isArray(bundle?.productMemory)?bundle.productMemory:[]);
         setProfile({
           firstName:p.first_name||'',
           lastName:p.last_name||'',
@@ -387,6 +401,25 @@ export default function StuffApp() {
     });
   },[user?.id,householdId,dataReady]);
 
+  async function learnProduct(retailer,selection){
+    if(!user?.id||!householdId||!preferences.rememberBrands||!selection?.request||!selection?.productId)return;
+    try{
+      const row=await rememberStuffHouseholdProduct(householdId,retailer,selection);
+      if(row)setProductMemory(v=>[row,...v.filter(x=>!(x.retailer===row.retailer&&x.request_key===row.request_key))]);
+    }catch(_){}
+  }
+  async function forgetUsual(row){
+    if(!householdId||!row)return;
+    try{await forgetStuffHouseholdProduct(householdId,row.retailer,row.request_key);setProductMemory(v=>v.filter(x=>!(x.retailer===row.retailer&&x.request_key===row.request_key)))}catch(e){Alert.alert('Could not forget product',e?.message||'Please try again.')}
+  }
+  function clearUsuals(){
+    if(!householdId||!productMemory.length)return;
+    Alert.alert('Forget all usual products?','Stuff will stop using your household’s learned product choices. It can start learning again from future shops.',[
+      {text:'Cancel',style:'cancel'},
+      {text:'Forget all',style:'destructive',onPress:async()=>{try{await clearStuffHouseholdProductMemory(householdId);setProductMemory([])}catch(e){Alert.alert('Could not clear usuals',e?.message||'Please try again.')}}},
+    ]);
+  }
+
   function clearRetailerWatchdog(){if(retailerWatchdog.current){clearTimeout(retailerWatchdog.current);retailerWatchdog.current=null}}
   function armRetailerWatchdog(label,ms=90000){
     clearRetailerWatchdog();
@@ -434,7 +467,7 @@ export default function StuffApp() {
   function send(){if(!canSend)return;const {allowed,restricted}=splitRetailerItems(items);if(restricted.length)Alert.alert('Some items were not automated',`Stuff leaves age-restricted items on your list for you to handle directly with the retailer: ${restricted.map(x=>title(x.name)).join(', ')}.`);if(!allowed.length)return;wooliesReturnTab.current='home';pending.current=allowed.map(i=>({name:i.name,qty:i.quantity,quantity:i.quantity,unit:i.unit}));injected.current=false;retries.current=0;setStatus('Connecting to Woolies…');armRetailerWatchdog('Woolworths');setCartUrl('https://www.woolworths.com.au/');setWebKey(k=>k+1);setMode('woolies')}
   function back(){clearRetailerWatchdog();pending.current=[];colesCartQueue.current=[];injected.current=false;colesCartInjected.current=false;retries.current=0;setMode('shop');setTab(wooliesReturnTab.current||'home');setStatus('')}
   function openCart(){setStatus('Opening your Woolies cart…');setCartUrl(CART_URL+'?stuffShopping='+Date.now())}
-  function onMessage(e){let m;try{m=JSON.parse(e.nativeEvent.data)}catch(_){return}if(m?.type==='WOOLIES_STATUS'){armRetailerWatchdog('Woolworths');setStatus(m.message||'Building your Woolies cart…');return}if(m?.type==='WOOLIES_DONE'){clearRetailerWatchdog();const added=Number(m.added||0);pending.current=[];setStatus(added?`Done — ${added} ${added===1?'product':'products'} added.`:(m.message||'Nothing was added.'));if(added)setTimeout(openCart,350)}}
+  function onMessage(e){let m;try{m=JSON.parse(e.nativeEvent.data)}catch(_){return}if(m?.type==='WOOLIES_STATUS'){armRetailerWatchdog('Woolworths');setStatus(m.message||'Building your Woolies cart…');return}if(m?.type==='WOOLIES_DONE'){clearRetailerWatchdog();const added=Number(m.added||0);for(const x of (m.remembered||[]))learnProduct('woolworths',x);pending.current=[];setStatus(added?`Done — ${added} ${added===1?'product':'products'} added.`:(m.message||'Nothing was added.'));if(added)setTimeout(openCart,350)}}
   function onLoad(e){
     const u=String(e.nativeEvent.url||'');
     const lower=u.toLowerCase();
@@ -446,7 +479,7 @@ export default function StuffApp() {
     injected.current=true;
     armRetailerWatchdog('Woolworths');
     setStatus('Matching your groceries…');
-    setTimeout(()=>webRef.current?.injectJavaScript(wooliesScript(pending.current,preferences)),1000);
+    setTimeout(()=>webRef.current?.injectJavaScript(wooliesScript(pending.current,preferences,productMemory.filter(x=>x.retailer==='woolworths'))),1000);
   }
 
   function goTab(next){setTab(next);setAccountView('main');setHouseholdView('main');setMoreView('main');setStatus('')}
@@ -455,7 +488,7 @@ export default function StuffApp() {
   function compareColes(){if(!canSend)return;const {allowed,restricted}=splitRetailerItems(items);if(restricted.length)Alert.alert('Some items were not automated',`Stuff leaves age-restricted items on your list for you to handle directly with the retailer: ${restricted.map(x=>title(x.name)).join(', ')}.`);if(!allowed.length)return;wooliesReturnTab.current='home';pending.current=allowed.map(i=>({name:i.name,qty:i.quantity,quantity:i.quantity,unit:i.unit}));injected.current=false;setColesResults(null);setStatus('Checking Coles…');armRetailerWatchdog('Coles');setWebKey(k=>k+1);setMode('coles')}
   function openColesFromAccount(){wooliesReturnTab.current='account';pending.current=[];injected.current=false;setStatus('Coles on this device');setWebKey(k=>k+1);setMode('colesSite')}
   function onColesMessage(e){let m;try{m=JSON.parse(e.nativeEvent.data)}catch(_){return}if(m?.type==='COLES_STATUS'){armRetailerWatchdog('Coles');setStatus(m.message||'Checking Coles…');return}if(m?.type==='COLES_DONE'){clearRetailerWatchdog();pending.current=[];setColesResults(m);setMode('colesResults');setStatus('')}}
-  function onColesLoad(e){const u=String(e.nativeEvent.url||'').toLowerCase();if(retailerChallenge(u)){stopForRetailerChallenge('Coles');return}if(/login|sign-in|signin|auth/.test(u)&&pending.current.length){armRetailerWatchdog('Coles',180000);setStatus('Log in to Coles if prompted — Stuff will continue when the retailer is ready.');return}if(!u.includes('coles.com.au')||injected.current)return;injected.current=true;armRetailerWatchdog('Coles');setStatus('Matching your groceries at Coles…');setTimeout(()=>webRef.current?.injectJavaScript(colesCompareScript(pending.current,preferences)),1000)}
+  function onColesLoad(e){const u=String(e.nativeEvent.url||'').toLowerCase();if(retailerChallenge(u)){stopForRetailerChallenge('Coles');return}if(/login|sign-in|signin|auth/.test(u)&&pending.current.length){armRetailerWatchdog('Coles',180000);setStatus('Log in to Coles if prompted — Stuff will continue when the retailer is ready.');return}if(!u.includes('coles.com.au')||injected.current)return;injected.current=true;armRetailerWatchdog('Coles');setStatus('Matching your groceries at Coles…');setTimeout(()=>webRef.current?.injectJavaScript(colesCompareScript(pending.current,preferences,productMemory.filter(x=>x.retailer==='coles'))),1000)}
   function startColesTrolley(){
     const queue=(colesResults?.matches||[]).filter(x=>x?.productId);
     if(!queue.length){Alert.alert('Coles trolley','There are no confident Coles matches to add yet.');return}
@@ -467,7 +500,7 @@ export default function StuffApp() {
     if(m?.type==='COLES_CART_STATUS'||m?.type==='COLES_CART_LOGIN'){setStatus(m.message||'Working with Coles…');return}
     if(m?.type!=='COLES_CART_ITEM_DONE')return;
     const current=colesCartQueue.current[colesCartPos.current];
-    if(m.success)colesCartAdded.current+=1;else colesCartFailed.current.push(current?.request||m.name||'item');
+    if(m.success){colesCartAdded.current+=1;learnProduct('coles',current)}else colesCartFailed.current.push(current?.request||m.name||'item');
     const next=colesCartPos.current+1;
     if(next>=colesCartQueue.current.length){
       const added=colesCartAdded.current,failed=colesCartFailed.current;
@@ -600,7 +633,7 @@ export default function StuffApp() {
       setHouseholdMembers(v=>[{id:`invite-${row.id}`,inviteId:row.id,kind:'invite',name:row.invitee_name||name,contact:row.contact,role:'Member',status:'Invite pending'},...v]);
       setInvite({name:'',contact:''});
       setHouseholdView('members');
-      Alert.alert('Invite saved','The invitation is now stored as pending. We’ll add delivery and invite acceptance next.');
+      Alert.alert('Invite ready','The iPhone share sheet includes the Stuff invite code and link. The recipient signs in or creates a Stuff account to join your household.');
     }catch(e){Alert.alert('Could not create invite',e?.message||'Please try again.')}finally{setDataBusy(false)}
   }
 
@@ -718,7 +751,7 @@ export default function StuffApp() {
         <Field label="Email or mobile" value={invite.contact} onChangeText={v=>setInvite(x=>({...x,contact:v}))} autoCapitalize="none" placeholder="Email or mobile" />
       </View>
       <TouchableOpacity style={[s.primaryButton,dataBusy&&s.buttonDisabled]} onPress={sendHouseholdInvite} disabled={dataBusy}>{dataBusy?<ActivityIndicator color="#FFFFFF"/>:<Text style={s.primaryButtonText}>Save invite</Text>}</TouchableOpacity>
-      <Text style={s.formNote}>The invite is stored securely as pending. Delivery and acceptance are the next household step.</Text>
+      <Text style={s.formNote}>The invite is stored securely as pending until the recipient joins with the invite code or link.</Text>
     </ScrollView>
     <BottomNav tab={tab} onChange={goTab}/>
   </SafeAreaView>;
@@ -744,7 +777,7 @@ export default function StuffApp() {
 
       <View style={s.sharedNote}>
         <Text style={s.sharedNoteTitle}>Your list is now stored with your household.</Text>
-        <Text style={s.sharedNoteCopy}>Changes to the list sync through Stuff when you’re signed in. Multi-person invite acceptance is the next household step.</Text>
+        <Text style={s.sharedNoteCopy}>Changes to the list sync through Stuff when you’re signed in. Invite someone with a code or link and they can join the same shared household list.</Text>
       </View>
     </ScrollView>
     <BottomNav tab={tab} onChange={goTab}/>
@@ -797,6 +830,19 @@ export default function StuffApp() {
       </View>
       <TouchableOpacity style={s.primaryButton} onPress={openWoolworthsFromAccount}><Text style={s.primaryButtonText}>Open Woolworths</Text></TouchableOpacity>
       <Text style={s.formNote}>We won’t label Woolworths “connected” until we can reliably verify the retailer session. A proper disconnect control comes with that session-management step.</Text>
+    </ScrollView>
+    <BottomNav tab={tab} onChange={goTab}/>
+  </SafeAreaView>;
+
+  if(tab==='account'&&accountView==='usuals')return <SafeAreaView style={s.safe}>
+    <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
+    <ScrollView contentContainerStyle={s.pageScreen}>
+      <PageHeader eyebrow="Account" title="Your usuals." lead="Stuff learns repeated household product choices so the next shop gets closer to what you normally buy." onBack={()=>setAccountView('main')} backLabel="Account" />
+      {!productMemory.filter(x=>+x.times_used>=2).length?<InfoBlock title="Nothing learned yet">Use Stuff for a couple of shops with “Remember usual brands” switched on. A product becomes a usual after the household chooses the same match more than once.</InfoBlock>:<View style={s.menuBlock}>
+        {productMemory.filter(x=>+x.times_used>=2).map(row=><MenuRow key={`${row.retailer}-${row.request_key}`} title={row.product_name||row.request_key} sub={`${title(row.request_key)} · ${row.retailer==='coles'?'Coles':'Woolworths'}${row.size?` · ${row.size}`:''} · chosen ${row.times_used} times`} right="Forget" onPress={()=>forgetUsual(row)} />)}
+      </View>}
+      {!!productMemory.length&&<TouchableOpacity style={s.secondaryButton} onPress={clearUsuals}><Text style={s.secondaryButtonText}>Forget all learned products</Text></TouchableOpacity>}
+      <Text style={s.formNote}>Explicit requests such as “cheapest” or “on special” override a usual product. If a usual is unavailable, Stuff falls back to another suitable match.</Text>
     </ScrollView>
     <BottomNav tab={tab} onChange={goTab}/>
   </SafeAreaView>;
@@ -862,6 +908,7 @@ export default function StuffApp() {
       <View style={s.menuBlock}>
         <MenuRow title="Preferred supermarket" sub={preferences.preferredSupermarket==='coles'?'Coles':'Woolworths'} onPress={()=>user?setAccountView('preferences'):setAccountView('auth')} />
         <MenuRow title="Product preferences" sub={user?'Best match, specials, alternatives and usual brands':'Sign in to save product preferences'} onPress={()=>user?setAccountView('preferences'):setAccountView('auth')} />
+        <MenuRow title="Your usuals" sub={productMemory.filter(x=>+x.times_used>=2).length?`${productMemory.filter(x=>+x.times_used>=2).length} learned household products`:'Stuff learns what your household repeatedly chooses'} right="Manage" onPress={()=>user?setAccountView('usuals'):setAccountView('auth')} />
       </View>
 
       <Text style={s.sectionTitle}>Permissions</Text>

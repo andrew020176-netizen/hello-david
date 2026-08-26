@@ -77,16 +77,17 @@ export async function loadStuffBundle(user) {
   if (!user?.id) return null;
   const { householdId } = await ensureStuffUser(user);
 
-  const [profileResult, preferencesResult, householdResult, membersResult, listResult, invitesResult] = await Promise.all([
+  const [profileResult, preferencesResult, householdResult, membersResult, listResult, invitesResult, productMemoryResult] = await Promise.all([
     supabase.from('stuff_profiles').select('*').eq('user_id', user.id).maybeSingle(),
     supabase.from('stuff_preferences').select('*').eq('user_id', user.id).maybeSingle(),
     householdId ? supabase.from('stuff_households').select('*').eq('id', householdId).maybeSingle() : Promise.resolve({ data: null }),
     householdId ? supabase.from('stuff_household_members').select('*').eq('household_id', householdId).order('joined_at', { ascending: true }) : Promise.resolve({ data: [] }),
     householdId ? supabase.from('stuff_household_lists').select('*').eq('household_id', householdId).maybeSingle() : Promise.resolve({ data: null }),
     householdId ? supabase.from('stuff_household_invites').select('*').eq('household_id', householdId).order('created_at', { ascending: false }) : Promise.resolve({ data: [] }),
+    householdId ? supabase.from('stuff_household_product_memory').select('*').eq('household_id', householdId).order('last_used_at', { ascending: false }) : Promise.resolve({ data: [] }),
   ]);
 
-  const firstError = [profileResult, preferencesResult, householdResult, membersResult, listResult, invitesResult].find(r => r?.error)?.error;
+  const firstError = [profileResult, preferencesResult, householdResult, membersResult, listResult, invitesResult, productMemoryResult].find(r => r?.error)?.error;
   if (firstError) throw firstError;
 
   return {
@@ -97,6 +98,7 @@ export async function loadStuffBundle(user) {
     members: membersResult.data || [],
     list: listResult.data,
     invites: invitesResult.data || [],
+    productMemory: productMemoryResult.data || [],
   };
 }
 
@@ -235,4 +237,55 @@ export async function createStuffSupportRequest(userId, email, message, category
     app_version:'0.1.0',
   }).select('id').single();
   return throwIfError(result);
+}
+
+
+function stuffMemoryKey(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\b(on special|cheapest|best value|value option)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export async function rememberStuffHouseholdProduct(householdId, retailer, selection) {
+  if (!householdId || !selection?.request || !selection?.productId) return null;
+  const requestKey = stuffMemoryKey(selection.request);
+  if (!requestKey) return null;
+  const rpcResult = await supabase.rpc('remember_stuff_household_product', {
+    p_household_id: householdId,
+    p_retailer: retailer === 'coles' ? 'coles' : 'woolworths',
+    p_request_key: requestKey,
+    p_product_id: String(selection.productId),
+    p_product_name: String(selection.productName || selection.product || '').trim() || null,
+    p_brand: String(selection.brand || '').trim() || null,
+    p_size: String(selection.size || '').trim() || null,
+  });
+  throwIfError(rpcResult);
+  const rowResult = await supabase
+    .from('stuff_household_product_memory')
+    .select('*')
+    .eq('household_id', householdId)
+    .eq('retailer', retailer === 'coles' ? 'coles' : 'woolworths')
+    .eq('request_key', requestKey)
+    .maybeSingle();
+  return throwIfError(rowResult);
+}
+
+export async function forgetStuffHouseholdProduct(householdId, retailer, requestKey) {
+  if (!householdId) return;
+  throwIfError(await supabase
+    .from('stuff_household_product_memory')
+    .delete()
+    .eq('household_id', householdId)
+    .eq('retailer', retailer)
+    .eq('request_key', String(requestKey || '').trim().toLowerCase()));
+}
+
+export async function clearStuffHouseholdProductMemory(householdId) {
+  if (!householdId) return;
+  throwIfError(await supabase
+    .from('stuff_household_product_memory')
+    .delete()
+    .eq('household_id', householdId));
 }
