@@ -12,6 +12,7 @@
 - CI validation of release assets/config plus iOS Expo export
 - fixed 22-item regression shop for development testing
 - usual-product settings copy aligned with the live learning behaviour
+- household invite links plus a manual invite-code fallback for Expo Go/native testing
 
 ## Phone test before external beta
 1. Pull `main` and run the app in Expo Go.
@@ -19,7 +20,7 @@
 3. Run the 22-item regression shop at Woolworths and Coles.
 4. Test voice capture, edit/delete/clear/share and restricted-item handling.
 5. Create/sign into a Stuff account and confirm the guest list migrates.
-6. Test household sync and invite link/code with a second account/device.
+6. Test household sync and both invite-link and manual invite-code joining with a second account/device.
 7. Repeat a product choice twice and confirm it appears in **Your usuals** and is favoured next time.
 8. Confirm explicit **cheapest** and **on special** instructions override a learned usual.
 9. Trigger retailer load/security failures and confirm Stuff stops cleanly without bypass attempts.
