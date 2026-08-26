@@ -51,11 +51,16 @@ function mergeItems(current, actions) {
   return next;
 }
 
-function wooliesScript(items) {
+function wooliesScript(items, preferences={}) {
   const payload = JSON.stringify(items.slice(0, 60));
+  const prefsPayload = JSON.stringify({
+    matchMode: preferences.matchMode==='cheapest'?'cheapest':'best',
+    preferSpecials: preferences.preferSpecials!==false,
+    allowAlternatives: preferences.allowAlternatives!==false,
+  });
   return `
 (async()=>{
- const items=${payload},sleep=ms=>new Promise(r=>setTimeout(r,ms));
+ const items=${payload},prefs=${prefsPayload},sleep=ms=>new Promise(r=>setTimeout(r,ms));
  const post=(type,message,extra={})=>{try{window.ReactNativeWebView.postMessage(JSON.stringify({type,message,...extra}))}catch(_){}};
  const txt=p=>(String(p.DisplayName||p.Name||'')+' '+String(p.Brand||'')+' '+String(p.PackageSize||'')).toLowerCase();
  const req=i=>(String(i.name||'')+' '+String(i.unit||'')).toLowerCase();
@@ -66,11 +71,11 @@ function wooliesScript(items) {
  const query=i=>{let q=String(i.name||'').replace(/\\b(on special|cheapest|best value|value option)\\b/gi,'').trim().replace(/weet\\s*-?\\s*a?bix|weetbix|weet bix/gi,'Weet-Bix');if(/baby (roma )?tomato/i.test(req(i)))q='cherry tomatoes';const m=measure(i);if(m&&!q.toLowerCase().includes(String(m.n)+m.u))q+=' '+m.n+m.u;return q};
  const words=s=>String(s||'').toLowerCase().split(/[^a-z0-9]+/).filter(w=>w&&!['the','a','an','of','and','for','pack','packet','bag','box','large','small','medium'].includes(w));
  const bad=(i,p)=>{const r=req(i),t=txt(p);if(/baby (roma )?tomato/.test(r)){if(!t.includes('tomato')||!['cherry','grape','cocktail','solanato','mini'].some(x=>t.includes(x)))return true;if(['diced','crushed','peeled','passata','paste','sauce','canned','tinned','mutti'].some(x=>t.includes(x)))return true}if(r.includes('tomato')&&['diced','crushed','peeled','passata','paste','sauce','canned','tinned'].some(x=>t.includes(x)))return true;if(r.includes('carrot')&&!r.includes('baby')&&t.includes('baby carrot'))return true;if(r.includes('bread')&&['bread mix','flour','breadcrumb'].some(x=>t.includes(x)))return true;const a=measure(i),b=pMeasure(p);if(a?.b&&b?.b){const ratio=b.b/a.b;if(ratio<.6||ratio>1.55)return true}return false};
- const score=(i,p)=>{if(bad(i,p))return-9999;const q=query(i),t=txt(p),ws=words(q);let s=ws.filter(w=>t.includes(w)).length*16;if(t.includes(q.toLowerCase()))s+=45;const r=req(i),a=measure(i),b=pMeasure(p);if(a?.b){if(!b?.b)s-=50;else{const x=b.b/a.b;s+=x>=.95&&x<=1.05?140:x>=.85&&x<=1.15?80:x>=.7&&x<=1.3?25:-200}}if(/\\b(large|big|family)\\b/.test(r)&&b?.b)s+=Math.min(70,b.b/20);if(/baby (roma )?tomato/.test(r)&&['cherry','grape','cocktail','mini'].some(x=>t.includes(x)))s+=150;if(r.includes('white bread')&&t.includes('white')&&(t.includes('bread')||t.includes('loaf')))s+=60;if(p.IsOnSpecial)s+=5;if(p.IsAvailable===false||p.IsInStock===false)s-=200;return s};
+ const score=(i,p)=>{if(bad(i,p))return-9999;const q=query(i),t=txt(p),ws=words(q);let s=ws.filter(w=>t.includes(w)).length*16;if(t.includes(q.toLowerCase()))s+=45;const r=req(i),a=measure(i),b=pMeasure(p);if(a?.b){if(!b?.b)s-=50;else{const x=b.b/a.b;s+=x>=.95&&x<=1.05?140:x>=.85&&x<=1.15?80:x>=.7&&x<=1.3?25:-200}}if(/\\b(large|big|family)\\b/.test(r)&&b?.b)s+=Math.min(70,b.b/20);if(/baby (roma )?tomato/.test(r)&&['cherry','grape','cocktail','mini'].some(x=>t.includes(x)))s+=150;if(r.includes('white bread')&&t.includes('white')&&(t.includes('bread')||t.includes('loaf')))s+=60;if(prefs.preferSpecials&&p.IsOnSpecial)s+=35;if(p.IsAvailable===false||p.IsInStock===false)s-=200;return s};
  async function search(i){const q=query(i),res=await fetch('/apis/ui/Search/products',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json, text/plain, */*'},credentials:'same-origin',body:JSON.stringify({Filters:[],IsSpecial:false,Location:'/shop/search/products?searchTerm='+encodeURIComponent(q),PageNumber:1,PageSize:30,SearchTerm:q,SortType:'TraderRelevance',IsHideEverydayMarketProducts:false,ExcludeSearchTypes:['UntraceableVendors'],GpBoost:0,GroupEdmVariants:false,EnableAdReRanking:false})});if(!res.ok)throw Error('search');const d=await res.json(),out=[];for(const g of d?.Products||[])for(const p of g?.Products||[])out.push(p);return out}
  const cartQty=i=>{const q=+(i.qty??i.quantity??1)||1;if(measure(i))return 1;return Math.max(1,Math.min(6,Math.round(q)))};
  async function add(i,p){const res=await fetch('/api/v3/ui/trolley/update',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json, text/plain, */*'},credentials:'same-origin',body:JSON.stringify({items:[{stockcode:+p.Stockcode,quantity:cartQty(i),source:p.Source||'SearchServiceSearchProducts',diagnostics:p.Diagnostics||'0',searchTerm:query(i),evaluateRewardPoints:false,offerId:p.OfferId??null,profileId:null,priceLevel:null}]})});if(!res.ok)return false;const raw=await res.text();try{const d=raw?JSON.parse(raw):null;if(d&&(d.Success===false||d.success===false))return false}catch(_){}return true}
- try{post('WOOLIES_STATUS','Matching your groceries…');const chosen=[],unmatched=[],used=new Set();for(let n=0;n<items.length;n++){const i=items[n];post('WOOLIES_STATUS','Matching '+(n+1)+' of '+items.length+': '+i.name);let ps=[];try{ps=await search(i)}catch(_){unmatched.push(i.name);continue}ps.sort((a,b)=>score(i,b)-score(i,a)||+(a.Price||999)-+(b.Price||999));const p=ps[0],ws=words(query(i)),hits=p?ws.filter(w=>txt(p).includes(w)).length:0;if(!p||!p.Stockcode||score(i,p)<20||hits<(ws.length===1?1:Math.min(2,ws.length))||used.has(String(p.Stockcode))){unmatched.push(i.name);continue}used.add(String(p.Stockcode));chosen.push([i,p]);await sleep(120)}let added=0,failed=0;for(let n=0;n<chosen.length;n++){post('WOOLIES_STATUS','Adding '+(n+1)+' of '+chosen.length+': '+chosen[n][0].name);(await add(...chosen[n]))?added++:failed++;await sleep(220)}const message=added+' products added.'+(unmatched.length?' Could not confidently match: '+unmatched.join(', ')+'.':'')+(failed?' '+failed+' failed to add.':'');post('WOOLIES_DONE',message,{added,failed,unmatched,success:added>0})}catch(e){post('WOOLIES_DONE','Could not finish the Woolies shop.',{added:0,success:false})}
+ try{post('WOOLIES_STATUS','Matching your groceries…');const chosen=[],unmatched=[],used=new Set();for(let n=0;n<items.length;n++){const i=items[n];post('WOOLIES_STATUS','Matching '+(n+1)+' of '+items.length+': '+i.name);let ps=[];try{ps=await search(i)}catch(_){unmatched.push(i.name);continue}const ws=words(query(i)),needed=ws.length===1?1:Math.min(2,ws.length);let ranked=ps.map(p=>({p,s:score(i,p),hits:ws.filter(w=>txt(p).includes(w)).length,price:+(p.Price||999)})).filter(x=>x.p?.Stockcode&&x.s>=20&&x.hits>=needed);if(!ranked.length){unmatched.push(i.name);continue}const bestScore=Math.max(...ranked.map(x=>x.s));ranked=ranked.filter(x=>x.s>=bestScore-(prefs.allowAlternatives?35:12));if(!prefs.allowAlternatives){const exactQuery=query(i).toLowerCase();ranked=ranked.filter(x=>x.hits===ws.length||txt(x.p).includes(exactQuery));if(!ranked.length){unmatched.push(i.name);continue}}ranked.sort((a,b)=>prefs.matchMode==='cheapest'?(a.price-b.price||b.s-a.s):(b.s-a.s||a.price-b.price));const p=ranked[0]?.p;if(!p||used.has(String(p.Stockcode))){unmatched.push(i.name);continue}used.add(String(p.Stockcode));chosen.push([i,p]);await sleep(120)}let added=0,failed=0;for(let n=0;n<chosen.length;n++){post('WOOLIES_STATUS','Adding '+(n+1)+' of '+chosen.length+': '+chosen[n][0].name);(await add(...chosen[n]))?added++:failed++;await sleep(220)}const message=added+' products added.'+(unmatched.length?' Could not confidently match: '+unmatched.join(', ')+'.':'')+(failed?' '+failed+' failed to add.':'');post('WOOLIES_DONE',message,{added,failed,unmatched,success:added>0})}catch(e){post('WOOLIES_DONE','Could not finish the Woolies shop.',{added:0,success:false})}
  return true;
 })();true;`;
 }
@@ -294,7 +299,7 @@ export default function StuffApp() {
     if(/login|sign-in|signin|verify|auth/.test(lower)){setStatus('Log in to Woolies — we’ll continue automatically.');return}
     injected.current=true;
     setStatus('Matching your groceries…');
-    setTimeout(()=>webRef.current?.injectJavaScript(wooliesScript(pending.current)),1000);
+    setTimeout(()=>webRef.current?.injectJavaScript(wooliesScript(pending.current,preferences)),1000);
   }
 
   function goTab(next){setTab(next);setAccountView('main');setHouseholdView('main');setMoreView('main');setStatus('')}
@@ -592,7 +597,7 @@ export default function StuffApp() {
         <ToggleRow title="Remember usual brands" sub="Later, learn from the products you actually choose" value={preferences.rememberBrands} onValueChange={v=>setPreferences(p=>({...p,rememberBrands:v}))} />
       </View>
       <TouchableOpacity style={[s.primaryButton,dataBusy&&s.buttonDisabled]} onPress={savePreferences} disabled={dataBusy}>{dataBusy?<ActivityIndicator color="#FFFFFF"/>:<Text style={s.primaryButtonText}>Save preferences</Text>}</TouchableOpacity>
-      <Text style={s.formNote}>These preferences are stored with your Stuff account. We’ll use them more deeply in product matching as the matching engine develops.</Text>
+      <Text style={s.formNote}>Best match, cheapest suitable, specials and alternative settings now change how Stuff chooses Woolworths products. Usual-brand learning comes next.</Text>
     </ScrollView>
     <BottomNav tab={tab} onChange={goTab}/>
   </SafeAreaView>;
