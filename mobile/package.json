@@ -4,14 +4,14 @@
   "private": true,
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
-    "start": "expo start --tunnel",
-    "android": "expo start --android",
-    "ios": "expo start --ios"
+    "start": "expo start --tunnel --go",
+    "android": "expo start --android --go",
+    "ios": "expo start --ios --go"
   },
   "dependencies": {
-    "expo": "~57.0.0",
-    "react": "19.2.3",
-    "react-native": "0.86.0",
-    "react-native-webview": "13.16.1"
+    "expo": "~54.0.0",
+    "react": "19.1.0",
+    "react-native": "0.81.0",
+    "react-native-webview": "13.15.0"
   }
 }
