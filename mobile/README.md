@@ -9,7 +9,7 @@ Native Expo MVP for Stuff the Shopping.
 3. Lets the user review, edit, remove and share items before sending anything to a retailer.
 4. Supports retailer sessions inside the app without storing retailer passwords or payment details in Stuff.
 5. Woolworths: searches current products, applies Stuff matching preferences and sends confident matches into the Woolworths cart.
-6. Coles: matches the same list against current Coles product data and shows an estimated basket, matched products, specials and unmatched items. Direct Coles cart addition is not yet implemented.
+6. Coles: matches the same list against current Coles product data, shows an estimated basket, then offers a **Build Coles trolley · beta** handoff that opens the matched Coles product pages and uses Coles's own Add to trolley controls. If Coles requires login, the user signs in directly with Coles inside the retailer WebView.
 7. Applies saved shopping preferences to retailer matching:
    - **Preferred supermarket** can be Woolworths or Coles and controls the retailer action shown on Home.
    - **Best match** prioritises the strongest product match.
@@ -42,6 +42,7 @@ Then scan the new QR code with Expo Go.
 - two different list lines cannot silently collapse into the same Woolworths stockcode
 - retailer credentials/cookies remain in the retailer WebView
 - Stuff account and household data use Supabase authentication and row-level access controls
+- Coles trolley handoff is explicitly beta because it relies on current Coles website controls rather than an official retailer API
 
 ## Important
 
