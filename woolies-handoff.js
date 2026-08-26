@@ -5,6 +5,7 @@
   const SHARED_SHOP_ENDPOINT = 'https://wfhgyunfvdyxwtggntpc.supabase.co/functions/v1/hello-david-shared-shop';
   const TOKEN_KEY = 'helloDavid.sharedShopToken.v1';
   const RETAILER_KEY = 'helloDavid.retailer.v1';
+  const retailerButtons = [...document.querySelectorAll('[data-retailer]')];
 
   const style = document.createElement('style');
   style.textContent = `
@@ -28,7 +29,16 @@
   actions.parentElement?.appendChild(note);
 
   function preferredRetailer() {
-    return localStorage.getItem(RETAILER_KEY) || 'Woolworths';
+    const saved = localStorage.getItem(RETAILER_KEY);
+    return saved === 'Coles' ? 'Coles' : 'Woolworths';
+  }
+
+  function setPreferredRetailer(retailer) {
+    const next = retailer === 'Coles' ? 'Coles' : 'Woolworths';
+    localStorage.setItem(RETAILER_KEY, next);
+    retailerButtons.forEach(button => button.classList.toggle('active', button.dataset.retailer === next));
+    updateRetailerUI();
+    window.dispatchEvent(new CustomEvent('hello-david-retailer-change', { detail: { retailer: next } }));
   }
 
   function updateRetailerUI() {
@@ -36,8 +46,14 @@
     const isWoolies = retailer === 'Woolworths';
     btn.disabled = !isWoolies;
     btn.textContent = isWoolies ? 'Send to Woolies' : 'Coles cart coming next';
-    note.textContent = isWoolies ? '' : 'Product picking works for Coles. Direct Coles cart handoff is the next connection.';
+    note.textContent = isWoolies
+      ? 'David will use Woolworths itself to find and match the products when you send the shop.'
+      : 'Coles will use the same flow once the direct cart connection is added.';
   }
+
+  retailerButtons.forEach(button => {
+    button.addEventListener('click', () => setPreferredRetailer(button.dataset.retailer));
+  });
 
   function currentItems() {
     return [...document.querySelectorAll('.item-row')].map(row => {
@@ -89,10 +105,10 @@
     updateRetailerUI();
   }
 
-  window.addEventListener('hello-david-retailer-change', updateRetailerUI);
-
   window.addEventListener('hello-david-woolies-helper-ready', () => {
-    if (preferredRetailer() === 'Woolworths') note.textContent = '';
+    if (preferredRetailer() === 'Woolworths') {
+      note.textContent = 'David will use Woolworths itself to find and match the products when you send the shop.';
+    }
   });
 
   window.addEventListener('hello-david-woolies-status', () => {
@@ -112,7 +128,7 @@
 
     btn.disabled = true;
     btn.textContent = 'Building Woolies cart…';
-    note.textContent = 'Opening Woolies. David will make the final product choices and avoid guessing.';
+    note.textContent = 'Opening Woolworths. David will search Woolworths directly and choose each product there.';
 
     if (inNativeApp()) {
       let householdToken = null;
@@ -142,5 +158,5 @@
     resetButton();
   });
 
-  updateRetailerUI();
+  setPreferredRetailer(preferredRetailer());
 })();
