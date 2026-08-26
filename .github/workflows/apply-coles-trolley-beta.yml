@@ -1,0 +1,26 @@
+name: Apply Coles trolley beta
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-coles-trolley-beta.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply Coles trolley beta
+        run: python3 .github/scripts/add_coles_trolley_beta.py
+      - name: Commit Coles trolley beta
+        run: |
+          git config user.name "stuff-shopping-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add mobile/StuffApp.js
+          git commit -m "Add Coles trolley beta handoff"
+          git push origin HEAD:main
