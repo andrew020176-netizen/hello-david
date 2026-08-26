@@ -1,4 +1,6 @@
 import { registerRootComponent } from 'expo';
-import AppRoot from './AppRoot';
+import './webviewLearningPatch';
+
+const AppRoot = require('./AppRoot').default;
 
 registerRootComponent(AppRoot);
