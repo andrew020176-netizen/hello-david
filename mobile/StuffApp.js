@@ -80,6 +80,41 @@ function wooliesScript(items, preferences={}) {
 })();true;`;
 }
 
+
+function colesCompareScript(items, preferences={}) {
+  const payload = JSON.stringify(items.slice(0, 60));
+  const prefsPayload = JSON.stringify({
+    matchMode: preferences.matchMode==='cheapest'?'cheapest':'best',
+    preferSpecials: preferences.preferSpecials!==false,
+    allowAlternatives: preferences.allowAlternatives!==false,
+  });
+  return `
+(async()=>{
+ const items=${payload},prefs=${prefsPayload};
+ const post=(type,message,extra={})=>{try{window.ReactNativeWebView.postMessage(JSON.stringify({type,message,...extra}))}catch(_){}};
+ const nextData=window.__NEXT_DATA__||(()=>{try{return JSON.parse(document.getElementById('__NEXT_DATA__')?.textContent||'{}')}catch(_){return{}}})();
+ const buildId=nextData?.buildId;
+ if(!buildId){post('COLES_DONE','Could not read Coles product data.',{matches:[],unmatched:items.map(i=>i.name),total:0,error:'build'});return true}
+ const req=i=>(String(i.name||'')+' '+String(i.unit||'')).toLowerCase();
+ const unit=v=>String(v||'').toLowerCase().replace(/litres?/g,'l').replace(/millilitres?/g,'ml').replace(/kilograms?/g,'kg').replace(/grams?/g,'g').trim();
+ const base=(n,u)=>(u==='kg'||u==='l')?n*1000:(u==='g'||u==='ml')?n:null;
+ const measure=i=>{const s=req(i),m=s.match(/\\b(\\d+(?:\\.\\d+)?)\\s*(kg|g|l|ml)\\b/i);if(m)return{n:+m[1],u:m[2],b:base(+m[1],m[2])};const q=+(i.qty??i.quantity??1),u=unit(i.unit);return /^(kg|g|l|ml)$/.test(u)?{n:q,u,b:base(q,u)}:null};
+ const txt=p=>(String(p?.name||'')+' '+String(p?.brand||'')+' '+String(p?.size||'')).toLowerCase();
+ const pMeasure=p=>{const m=txt(p).match(/\\b(\\d+(?:\\.\\d+)?)\\s*(kg|g|l|ml)\\b/i);return m?{n:+m[1],u:m[2],b:base(+m[1],m[2])}:null};
+ const query=i=>{let q=String(i.name||'').replace(/\\b(on special|cheapest|best value|value option)\\b/gi,'').trim().replace(/weet\\s*-?\\s*a?bix|weetbix|weet bix/gi,'Weet-Bix');if(/baby (roma )?tomato/i.test(req(i)))q='cherry tomatoes';const m=measure(i);if(m&&!q.toLowerCase().includes(String(m.n)+m.u))q+=' '+m.n+m.u;return q};
+ const words=s=>String(s||'').toLowerCase().split(/[^a-z0-9]+/).filter(w=>w&&!['the','a','an','of','and','for','pack','packet','bag','box','large','small','medium'].includes(w));
+ const pricing=p=>p?.pricing||{};
+ const price=p=>Number(pricing(p).now||pricing(p).price||999);
+ const isSpecial=p=>{const t=String(pricing(p).promotionType||'').toUpperCase();return !!pricing(p).was||['SPECIAL','DOWN','MULTIBUY','PERCENT_OFF'].includes(t)};
+ const bad=(i,p)=>{const r=req(i),t=txt(p);if(/baby (roma )?tomato/.test(r)){if(!t.includes('tomato')||!['cherry','grape','cocktail','solanato','mini'].some(x=>t.includes(x)))return true;if(['diced','crushed','peeled','passata','paste','sauce','canned','tinned','mutti'].some(x=>t.includes(x)))return true}if(r.includes('tomato')&&['diced','crushed','peeled','passata','paste','sauce','canned','tinned'].some(x=>t.includes(x)))return true;if(r.includes('carrot')&&!r.includes('baby')&&t.includes('baby carrot'))return true;if(r.includes('bread')&&['bread mix','flour','breadcrumb'].some(x=>t.includes(x)))return true;const a=measure(i),b=pMeasure(p);if(a?.b&&b?.b){const ratio=b.b/a.b;if(ratio<.6||ratio>1.55)return true}return false};
+ const score=(i,p)=>{if(bad(i,p))return-9999;const q=query(i),t=txt(p),ws=words(q);let s=ws.filter(w=>t.includes(w)).length*16;if(t.includes(q.toLowerCase()))s+=45;const a=measure(i),b=pMeasure(p);if(a?.b){if(!b?.b)s-=50;else{const x=b.b/a.b;s+=x>=.95&&x<=1.05?140:x>=.85&&x<=1.15?80:x>=.7&&x<=1.3?25:-200}}if(prefs.preferSpecials&&isSpecial(p))s+=35;if(p?.availability===false)s-=200;return s};
+ async function search(i){const q=query(i),url='/_next/data/'+encodeURIComponent(buildId)+'/en/search/products.json?q='+encodeURIComponent(q);const res=await fetch(url,{credentials:'same-origin',headers:{Accept:'application/json'}});if(!res.ok)throw Error('search');const d=await res.json();return d?.pageProps?.searchResults?.results||[]}
+ const qty=i=>measure(i)?1:Math.max(1,Math.min(6,Math.round(+(i.qty??i.quantity??1)||1)));
+ try{const matches=[],unmatched=[];let total=0;for(let n=0;n<items.length;n++){const i=items[n];post('COLES_STATUS','Checking '+(n+1)+' of '+items.length+': '+i.name);let ps=[];try{ps=await search(i)}catch(_){unmatched.push(i.name);continue}const ws=words(query(i)),needed=ws.length===1?1:Math.min(2,ws.length);let ranked=ps.map(p=>({p,s:score(i,p),hits:ws.filter(w=>txt(p).includes(w)).length,price:price(p)})).filter(x=>x.p?.id&&x.price<999&&x.s>=20&&x.hits>=needed);if(!ranked.length){unmatched.push(i.name);continue}const bestScore=Math.max(...ranked.map(x=>x.s));ranked=ranked.filter(x=>x.s>=bestScore-(prefs.allowAlternatives?35:12));if(!prefs.allowAlternatives){const exact=query(i).toLowerCase();ranked=ranked.filter(x=>x.hits===ws.length||txt(x.p).includes(exact));if(!ranked.length){unmatched.push(i.name);continue}}ranked.sort((a,b)=>prefs.matchMode==='cheapest'?(a.price-b.price||b.s-a.s):(b.s-a.s||a.price-b.price));const x=ranked[0],p=x.p,mult=qty(i),line=+(x.price*mult).toFixed(2);total+=line;matches.push({request:i.name,product:p.name||i.name,brand:p.brand||'',size:p.size||'',price:x.price,quantity:mult,lineTotal:line,special:isSpecial(p),productId:p.id})}post('COLES_DONE','Coles check complete.',{matches,unmatched,total:+total.toFixed(2)})}catch(e){post('COLES_DONE','Could not finish the Coles check.',{matches:[],unmatched:items.map(i=>i.name),total:0,error:String(e?.message||e)})}
+ return true;
+})();true;`;
+}
+
 function BottomNav({tab,onChange}) {
   const labelStyle = key => tab===key ? s.navLabelActive : s.navLabel;
   return <View style={s.bottomNav}>
@@ -139,7 +174,8 @@ export default function StuffApp() {
   const [mode,setMode]=useState('shop'),[tab,setTab]=useState('home'),[items,setItems]=useState([]),[open,setOpen]=useState(true),[status,setStatus]=useState(''),[busy,setBusy]=useState(false),[cartUrl,setCartUrl]=useState(CART_URL),[webKey,setWebKey]=useState(0);
   const [accountView,setAccountView]=useState('main');
   const [profile,setProfile]=useState({firstName:'',lastName:'',email:'',mobile:'',suburb:'',postcode:''});
-  const [preferences,setPreferences]=useState({matchMode:'best',preferSpecials:true,allowAlternatives:true,rememberBrands:true});
+  const [preferences,setPreferences]=useState({preferredSupermarket:'woolworths',matchMode:'best',preferSpecials:true,allowAlternatives:true,rememberBrands:true});
+  const [colesResults,setColesResults]=useState(null);
   const [householdView,setHouseholdView]=useState('main');
   const [householdId,setHouseholdId]=useState(null);
   const [householdName,setHouseholdName]=useState('My household');
@@ -164,7 +200,7 @@ export default function StuffApp() {
       setHouseholdName('My household');
       setHouseholdMembers([]);
       setProfile({firstName:'',lastName:'',email:'',mobile:'',suburb:'',postcode:''});
-      setPreferences({matchMode:'best',preferSpecials:true,allowAlternatives:true,rememberBrands:true});
+      setPreferences({preferredSupermarket:'woolworths',matchMode:'best',preferSpecials:true,allowAlternatives:true,rememberBrands:true});
       lastSyncedList.current='';
       return;
     }
@@ -187,6 +223,7 @@ export default function StuffApp() {
           postcode:p.postcode||'',
         });
         setPreferences({
+          preferredSupermarket:pref.preferred_supermarket==='coles'?'coles':'woolworths',
           matchMode:pref.match_mode==='cheapest'?'cheapest':'best',
           preferSpecials:pref.prefer_specials!==false,
           allowAlternatives:pref.allow_alternatives!==false,
@@ -305,6 +342,10 @@ export default function StuffApp() {
   function goTab(next){setTab(next);setAccountView('main');setHouseholdView('main');setMoreView('main');setStatus('')}
   function goToStuffLogin(){setTab('account');setAccountView('auth');setHouseholdView('main')}
   function openWoolworthsFromAccount(){wooliesReturnTab.current='account';pending.current=[];injected.current=false;setStatus('Woolworths on this device');setCartUrl('https://www.woolworths.com.au/');setWebKey(k=>k+1);setMode('woolies')}
+  function compareColes(){if(!canSend)return;wooliesReturnTab.current='home';pending.current=items.map(i=>({name:i.name,qty:i.quantity,quantity:i.quantity,unit:i.unit}));injected.current=false;setColesResults(null);setStatus('Checking Coles…');setWebKey(k=>k+1);setMode('coles')}
+  function openColesFromAccount(){wooliesReturnTab.current='account';pending.current=[];injected.current=false;setStatus('Coles on this device');setWebKey(k=>k+1);setMode('colesSite')}
+  function onColesMessage(e){let m;try{m=JSON.parse(e.nativeEvent.data)}catch(_){return}if(m?.type==='COLES_STATUS'){setStatus(m.message||'Checking Coles…');return}if(m?.type==='COLES_DONE'){pending.current=[];setColesResults(m);setMode('colesResults');setStatus('')}}
+  function onColesLoad(e){const u=String(e.nativeEvent.url||'').toLowerCase();if(!u.includes('coles.com.au')||injected.current)return;injected.current=true;setStatus('Matching your groceries at Coles…');setTimeout(()=>webRef.current?.injectJavaScript(colesCompareScript(pending.current,preferences)),1000)}
 
   async function handleSignIn(){
     const email=authForm.email.trim(),password=authForm.password;
@@ -439,6 +480,23 @@ export default function StuffApp() {
   function reportProblem(){Alert.alert('Report a problem','We’ll connect this to a support channel before release. For now this confirms where problem reporting will live.')}
 
   if(mode==='woolies')return <SafeAreaView style={s.safe}><StatusBar barStyle="dark-content"/><View style={s.cartHead}><TouchableOpacity onPress={back} style={s.back}><Text style={s.backText}>‹ {wooliesReturnTab.current==='account'?'Account':'Shop'}</Text></TouchableOpacity><View style={{flex:1}}><Text style={s.cartTitle}>Woolies</Text><Text style={s.cartStatus} numberOfLines={1}>{status}</Text></View></View><WebView key={webKey} ref={webRef} source={{uri:cartUrl}} style={{flex:1}} onMessage={onMessage} onLoadEnd={onLoad} userAgent={UA} javaScriptEnabled domStorageEnabled sharedCookiesEnabled thirdPartyCookiesEnabled cacheEnabled incognito={false} setSupportMultipleWindows={false}/></SafeAreaView>;
+
+
+  if(mode==='coles')return <SafeAreaView style={s.safe}><StatusBar barStyle="dark-content"/><View style={s.cartHead}><TouchableOpacity onPress={back} style={s.back}><Text style={s.backText}>‹ Shop</Text></TouchableOpacity><View style={{flex:1}}><Text style={s.cartTitle}>Coles</Text><Text style={s.cartStatus} numberOfLines={1}>{status}</Text></View></View><WebView key={`coles-${webKey}`} ref={webRef} source={{uri:'https://www.coles.com.au/'}} style={{flex:1}} onMessage={onColesMessage} onLoadEnd={onColesLoad} userAgent={UA} javaScriptEnabled domStorageEnabled sharedCookiesEnabled thirdPartyCookiesEnabled cacheEnabled incognito={false} setSupportMultipleWindows={false}/></SafeAreaView>;
+
+  if(mode==='colesSite')return <SafeAreaView style={s.safe}><StatusBar barStyle="dark-content"/><View style={s.cartHead}><TouchableOpacity onPress={back} style={s.back}><Text style={s.backText}>‹ {wooliesReturnTab.current==='account'?'Account':'Shop'}</Text></TouchableOpacity><View style={{flex:1}}><Text style={s.cartTitle}>Coles</Text><Text style={s.cartStatus} numberOfLines={1}>{status}</Text></View></View><WebView key={`coles-site-${webKey}`} ref={webRef} source={{uri:'https://www.coles.com.au/'}} style={{flex:1}} userAgent={UA} javaScriptEnabled domStorageEnabled sharedCookiesEnabled thirdPartyCookiesEnabled cacheEnabled incognito={false} setSupportMultipleWindows={false}/></SafeAreaView>;
+
+  if(mode==='colesResults')return <SafeAreaView style={s.safe}>
+    <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
+    <ScrollView contentContainerStyle={s.pageScreen}>
+      <PageHeader eyebrow="Coles" title="Your Coles estimate." lead="Stuff matched your list against current Coles product data. Prices and availability can still change in Coles." onBack={()=>setMode('shop')} backLabel="Shopping list" />
+      <View style={s.colesSummary}><Text style={s.colesSummaryLabel}>ESTIMATED BASKET</Text><Text style={s.colesSummaryTotal}>${Number(colesResults?.total||0).toFixed(2)}</Text><Text style={s.colesSummaryMeta}>{colesResults?.matches?.length||0} of {count} items confidently matched</Text></View>
+      <View style={s.colesRows}>{(colesResults?.matches||[]).map((m,idx)=><View key={`${m.productId||idx}`} style={s.colesRow}><View style={{flex:1}}><Text style={s.item}>{title(m.request)}</Text><Text style={s.detail}>{m.product}{m.size?` · ${m.size}`:''}{m.special?' · Special':''}</Text></View><Text style={s.colesPrice}>${Number(m.lineTotal||m.price||0).toFixed(2)}</Text></View>)}</View>
+      {!!colesResults?.unmatched?.length&&<InfoBlock title="Couldn’t confidently match">{colesResults.unmatched.join(', ')}</InfoBlock>}
+      <TouchableOpacity style={s.colesButton} onPress={()=>{wooliesReturnTab.current='home';setWebKey(k=>k+1);setMode('colesSite')}}><Text style={s.colesButtonText}>Open Coles</Text></TouchableOpacity>
+      <Text style={s.formNote}>This is price and product matching only. Stuff is not yet adding these Coles matches directly to the Coles cart.</Text>
+    </ScrollView>
+  </SafeAreaView>;
 
   if(tab==='household'&&!user)return <SafeAreaView style={s.safe}>
     <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
@@ -584,6 +642,12 @@ export default function StuffApp() {
     <ScrollView contentContainerStyle={s.pageScreen}>
       <PageHeader eyebrow="Shopping preferences" title="Product preferences" lead="Tell Stuff how you generally want products chosen." onBack={()=>setAccountView('main')} backLabel="Account" />
 
+      <Text style={s.sectionTitle}>Preferred supermarket</Text>
+      <View style={s.segmentWrap}>
+        <TouchableOpacity style={[s.segment,preferences.preferredSupermarket==='woolworths'&&s.segmentActive]} onPress={()=>setPreferences(p=>({...p,preferredSupermarket:'woolworths'}))}><Text style={[s.segmentText,preferences.preferredSupermarket==='woolworths'&&s.segmentTextActive]}>Woolworths</Text></TouchableOpacity>
+        <TouchableOpacity style={[s.segment,preferences.preferredSupermarket==='coles'&&s.segmentActive]} onPress={()=>setPreferences(p=>({...p,preferredSupermarket:'coles'}))}><Text style={[s.segmentText,preferences.preferredSupermarket==='coles'&&s.segmentTextActive]}>Coles</Text></TouchableOpacity>
+      </View>
+
       <Text style={s.sectionTitle}>Product matching</Text>
       <View style={s.segmentWrap}>
         <TouchableOpacity style={[s.segment,preferences.matchMode==='best'&&s.segmentActive]} onPress={()=>setPreferences(p=>({...p,matchMode:'best'}))}><Text style={[s.segmentText,preferences.matchMode==='best'&&s.segmentTextActive]}>Best match</Text></TouchableOpacity>
@@ -627,11 +691,12 @@ export default function StuffApp() {
       <Text style={s.sectionTitle}>Connected shopping services</Text>
       <View style={s.menuBlock}>
         <MenuRow title="Woolworths" sub="Sign in to Woolworths when you send your shopping" right="Manage" onPress={()=>setAccountView('woolworths')} />
+        <MenuRow title="Coles" sub="Coles login stays with Coles on this device" right="Open" onPress={openColesFromAccount} />
       </View>
 
       <Text style={s.sectionTitle}>Shopping preferences</Text>
       <View style={s.menuBlock}>
-        <MenuRow title="Preferred supermarket" sub="Woolworths" right="" />
+        <MenuRow title="Preferred supermarket" sub={preferences.preferredSupermarket==='coles'?'Coles':'Woolworths'} onPress={()=>user?setAccountView('preferences'):setAccountView('auth')} />
         <MenuRow title="Product preferences" sub={user?'Best match, specials, alternatives and usual brands':'Sign in to save product preferences'} onPress={()=>user?setAccountView('preferences'):setAccountView('auth')} />
       </View>
 
@@ -788,6 +853,11 @@ export default function StuffApp() {
         <Text style={s.sendArrow}>›</Text>
       </TouchableOpacity>
       <Text style={s.note}>We’ll build your Woolies cart. You review it before checkout.</Text>
+      <TouchableOpacity style={[s.colesButton,!canSend&&s.sendOff]} onPress={compareColes} disabled={!canSend}>
+        <View style={s.colesMark}><Text style={s.colesMarkText}>C</Text></View>
+        <View style={s.sendCopy}><Text style={s.colesButtonText}>Check at Coles</Text><Text style={s.colesButtonSub}>Match the list and estimate the basket</Text></View>
+        <Text style={s.sendArrow}>›</Text>
+      </TouchableOpacity>
     </ScrollView>
 
     <BottomNav tab={tab} onChange={goTab}/>
@@ -834,6 +904,18 @@ const s=StyleSheet.create({
   sendOff:{opacity:.28},
   wooliesMark:{width:38,height:38,borderRadius:19,backgroundColor:'#8CC63F',alignItems:'center',justifyContent:'center',marginRight:12},
   wooliesMarkText:{color:'#FFFFFF',fontSize:20,fontWeight:'900',fontStyle:'italic'},
+  colesButton:{marginTop:10,minHeight:58,borderRadius:16,backgroundColor:'#E01A22',paddingHorizontal:14,flexDirection:'row',alignItems:'center',justifyContent:'center'},
+  colesMark:{width:38,height:38,borderRadius:19,backgroundColor:'#FFFFFF',alignItems:'center',justifyContent:'center',marginRight:12},
+  colesMarkText:{color:'#E01A22',fontSize:21,fontWeight:'900'},
+  colesButtonText:{color:'#FFFFFF',fontSize:16,fontWeight:'900'},
+  colesButtonSub:{marginTop:2,color:'#FFE7E8',fontSize:11,fontWeight:'600'},
+  colesSummary:{marginTop:24,padding:20,borderRadius:20,backgroundColor:'#E01A22'},
+  colesSummaryLabel:{color:'#FFE7E8',fontSize:10,fontWeight:'900',letterSpacing:.8},
+  colesSummaryTotal:{marginTop:6,color:'#FFFFFF',fontSize:42,lineHeight:46,fontWeight:'900',letterSpacing:-1.5},
+  colesSummaryMeta:{marginTop:4,color:'#FFE7E8',fontSize:12,fontWeight:'700'},
+  colesRows:{marginTop:18,borderTopWidth:StyleSheet.hairlineWidth,borderTopColor:'#BEB6A7'},
+  colesRow:{minHeight:62,flexDirection:'row',alignItems:'center',borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:'#BEB6A7'},
+  colesPrice:{color:'#171717',fontSize:15,fontWeight:'900',marginLeft:12},
   sendCopy:{flex:1},
   sendText:{color:'#FFFFFF',fontSize:17,fontWeight:'900'},
   sendSub:{marginTop:2,color:'#E5F1ED',fontSize:11,fontWeight:'600'},

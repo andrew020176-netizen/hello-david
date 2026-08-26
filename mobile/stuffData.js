@@ -125,7 +125,7 @@ export async function saveStuffProfile(userId, profile) {
 export async function saveStuffPreferences(userId, preferences) {
   const payload = {
     user_id: userId,
-    preferred_supermarket: 'woolworths',
+    preferred_supermarket: preferences.preferredSupermarket === 'coles' ? 'coles' : 'woolworths',
     match_mode: preferences.matchMode === 'cheapest' ? 'cheapest' : 'best',
     prefer_specials: !!preferences.preferSpecials,
     allow_alternatives: !!preferences.allowAlternatives,
