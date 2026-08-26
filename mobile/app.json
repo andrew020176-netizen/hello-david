@@ -5,6 +5,11 @@
     "scheme": "stuffshopping",
     "version": "0.1.0",
     "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#F7F1E3",
+      "resizeMode": "contain"
+    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "au.com.stufftheshopping.app",
