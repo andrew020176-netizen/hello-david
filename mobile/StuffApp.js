@@ -55,34 +55,28 @@ export default function StuffApp() {
   async function start(){try{const p=await requestRecordingPermissionsAsync();if(!p.granted){Alert.alert('Microphone access needed','Allow microphone access so you can speak your grocery list.');return}await setAudioModeAsync({playsInSilentMode:true,allowsRecording:true});await recorder.prepareToRecordAsync();recorder.record();setStatus('Listening… tap Stop when you’re finished.')}catch(_){setStatus("Couldn't start the microphone. Try again.")}}
   async function stop(){try{setStatus('Finishing…');await recorder.stop();const uri=recorder.uri||recState?.url;await setAudioModeAsync({allowsRecording:false});await processAudio(uri)}catch(_){setBusy(false);setStatus("Couldn't finish that recording. Try again.")}}
   async function share(){if(!items.length){setStatus('Add some groceries first.');return}try{await Share.share({message:['Our grocery list:',...items.map(i=>`• ${title(i.name)} — ${detail(i)}`)].join('\n')})}catch(_){}}
-  function send(){if(!canSend)return;pending.current=items.map(i=>({name:i.name,qty:i.quantity,quantity:i.quantity,unit:i.unit}));injected.current=false;retries.current=0;setStatus('Opening Woolies…');setCartUrl(CART_URL);setWebKey(k=>k+1);setMode('woolies')}
+  function send(){if(!canSend)return;pending.current=items.map(i=>({name:i.name,qty:i.quantity,quantity:i.quantity,unit:i.unit}));injected.current=false;retries.current=0;setStatus('Connecting to Woolies…');setCartUrl('https://www.woolworths.com.au/');setWebKey(k=>k+1);setMode('woolies')}
   function back(){pending.current=[];injected.current=false;retries.current=0;setMode('shop');setStatus(count?`Got it — ${count} ${count===1?'thing':'things'}.`:'Ready when you are.')}
-  function onMessage(e){let m;try{m=JSON.parse(e.nativeEvent.data)}catch(_){return}if(m?.type==='WOOLIES_STATUS'){setStatus(m.message||'Building your Woolies cart…');return}if(m?.type==='WOOLIES_DONE'){const added=Number(m.added||0);pending.current=[];setStatus(added?`Done — ${added} ${added===1?'product':'products'} added.`:(m.message||'Nothing was added.'));if(added)setTimeout(()=>webRef.current?.injectJavaScript('location.reload();true;'),800)}}
+  function openCart(){setTimeout(()=>webRef.current?.injectJavaScript(`
+    (()=>{
+      const nodes=[...document.querySelectorAll('a,button')];
+      const cart=nodes.find(el=>/view cart|cart/i.test(String(el.getAttribute('aria-label')||'')+' '+String(el.textContent||'')) || /\/shop\/cart/i.test(String(el.getAttribute('href')||'')));
+      if(cart){cart.click();}else{location.assign(${JSON.stringify(CART_URL)});}
+    })();true;
+  `),700)}
+  function onMessage(e){let m;try{m=JSON.parse(e.nativeEvent.data)}catch(_){return}if(m?.type==='WOOLIES_STATUS'){setStatus(m.message||'Building your Woolies cart…');return}if(m?.type==='WOOLIES_DONE'){const added=Number(m.added||0);pending.current=[];setStatus(added?`Done — ${added} ${added===1?'product':'products'} added. Opening your cart…`:(m.message||'Nothing was added.'));if(added)openCart()}}
   function onLoad(e){
     const u=String(e.nativeEvent.url||'');
+    const lower=u.toLowerCase();
     if(!pending.current.length||injected.current)return;
-    if(!u.includes('woolworths.com.au')){setStatus('Opening Woolies…');return}
-    if(/login|sign-in|signin|verify|auth/i.test(u)&&!u.includes('/shop/cart')){setStatus('Log in to Woolies — we’ll continue automatically.');return}
-    if(!u.includes('/shop/cart')){
-      if(retries.current<4){
-        retries.current+=1;
-        setStatus('Opening your Woolies cart…');
-        setTimeout(()=>{
-          if(pending.current.length&&!injected.current){
-            webRef.current?.injectJavaScript(`location.replace(${JSON.stringify(CART_URL)});true;`);
-          }
-        },700);
-      }else{
-        setStatus('Woolies did not open the cart. Tap ‹ Shop and try again.');
-      }
-      return;
-    }
+    if(!lower.includes('woolworths.com.au')){setStatus('Connecting to Woolies…');return}
+    if(/login|sign-in|signin|verify|auth/.test(lower)){setStatus('Log in to Woolies — we’ll continue automatically.');return}
     injected.current=true;
     setStatus('Matching your groceries…');
-    setTimeout(()=>webRef.current?.injectJavaScript(wooliesScript(pending.current)),900);
+    setTimeout(()=>webRef.current?.injectJavaScript(wooliesScript(pending.current)),1000);
   }
 
-  if(mode==='woolies')return <SafeAreaView style={s.safe}><StatusBar barStyle="dark-content"/><View style={s.cartHead}><TouchableOpacity onPress={back} style={s.back}><Text style={s.backText}>‹ Shop</Text></TouchableOpacity><View style={{flex:1}}><Text style={s.cartTitle}>Woolies cart</Text><Text style={s.cartStatus} numberOfLines={1}>{status}</Text></View></View><WebView key={webKey} ref={webRef} source={{uri:cartUrl}} style={{flex:1}} onMessage={onMessage} onLoadEnd={onLoad} userAgent={UA} javaScriptEnabled domStorageEnabled sharedCookiesEnabled thirdPartyCookiesEnabled cacheEnabled incognito={false} setSupportMultipleWindows={false}/></SafeAreaView>;
+  if(mode==='woolies')return <SafeAreaView style={s.safe}><StatusBar barStyle="dark-content"/><View style={s.cartHead}><TouchableOpacity onPress={back} style={s.back}><Text style={s.backText}>‹ Shop</Text></TouchableOpacity><View style={{flex:1}}><Text style={s.cartTitle}>Woolies</Text><Text style={s.cartStatus} numberOfLines={1}>{status}</Text></View></View><WebView key={webKey} ref={webRef} source={{uri:cartUrl}} style={{flex:1}} onMessage={onMessage} onLoadEnd={onLoad} userAgent={UA} javaScriptEnabled domStorageEnabled sharedCookiesEnabled thirdPartyCookiesEnabled cacheEnabled incognito={false} setSupportMultipleWindows={false}/></SafeAreaView>;
 
   return <SafeAreaView style={s.safe}><StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/><ScrollView contentContainerStyle={s.screen}><Text style={s.brand}>stuff{`\n`}the{`\n`}shopping<Text style={s.dot}>.</Text></Text><View style={s.intro}><Text style={s.tag}>We’ll do the groceries.</Text><Text style={s.question}>What do you need?</Text></View><TouchableOpacity style={[s.speak,recording&&s.stop,busy&&s.disabled]} onPress={recording?stop:start} disabled={busy}>{busy?<ActivityIndicator color="#171717"/>:<Text style={s.speakIcon}>{recording?'■':'●'}</Text>}<Text style={s.speakText}>{busy?'Sorting…':recording?'Stop':'Speak'}</Text></TouchableOpacity><Text style={s.status}>{status}</Text><View style={s.list}><TouchableOpacity style={s.listHead} onPress={()=>setOpen(v=>!v)}><Text style={s.listTitle}>{listLabel}</Text><Text style={s.chev}>{open?'⌃':'⌄'}</Text></TouchableOpacity>{open&&<View>{!count?<Text style={s.empty}>Nothing here yet.</Text>:items.map(i=><View key={i.id} style={s.row}><View style={{flex:1}}><Text style={s.item}>{title(i.name)}</Text><Text style={s.detail}>{detail(i)}</Text></View><TouchableOpacity style={s.remove} onPress={()=>setItems(v=>v.filter(x=>x.id!==i.id))}><Text style={s.removeText}>×</Text></TouchableOpacity></View>)}</View>}</View><TouchableOpacity style={s.share} onPress={share}><Text style={s.shareText}>Share</Text></TouchableOpacity><TouchableOpacity style={[s.send,!canSend&&s.sendOff]} onPress={send} disabled={!canSend}><Text style={s.sendText}>Send to Woolies</Text></TouchableOpacity><Text style={s.note}>We’ll build your Woolies cart. You review it before checkout.</Text></ScrollView></SafeAreaView>;
 }
