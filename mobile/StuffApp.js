@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, SafeAreaView, ScrollView, Share, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, SafeAreaView, ScrollView, Share, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from 'expo-audio';
 
@@ -82,11 +82,40 @@ function MenuRow({title:rowTitle,sub,right='›',onPress,danger=false}) {
   </TouchableOpacity>;
 }
 
+function PageHeader({eyebrow,title:pageTitle,lead,onBack}) {
+  return <>
+    <Text style={s.brand}>stuff{`\n`}the{`\n`}shopping<Text style={s.dot}>.</Text></Text>
+    {!!onBack&&<TouchableOpacity onPress={onBack} style={s.inlineBack}><Text style={s.inlineBackText}>‹ Account</Text></TouchableOpacity>}
+    <View style={[s.pageIntro,onBack&&{marginTop:18}]}>
+      <Text style={s.pageEyebrow}>{eyebrow}</Text>
+      <Text style={s.pageTitle}>{pageTitle}</Text>
+      {!!lead&&<Text style={s.pageLead}>{lead}</Text>}
+    </View>
+  </>;
+}
+
+function Field({label,value,onChangeText,keyboardType='default',autoCapitalize='sentences'}) {
+  return <View style={s.fieldWrap}>
+    <Text style={s.fieldLabel}>{label}</Text>
+    <TextInput style={s.field} value={value} onChangeText={onChangeText} keyboardType={keyboardType} autoCapitalize={autoCapitalize} placeholderTextColor="#8B8479" />
+  </View>;
+}
+
+function ToggleRow({title:rowTitle,sub,value,onValueChange}) {
+  return <View style={s.toggleRow}>
+    <View style={{flex:1,paddingRight:12}}><Text style={s.menuTitle}>{rowTitle}</Text>{!!sub&&<Text style={s.menuSub}>{sub}</Text>}</View>
+    <Switch value={value} onValueChange={onValueChange} />
+  </View>;
+}
+
 export default function StuffApp() {
-  const webRef = useRef(null), pending = useRef([]), injected = useRef(false), retries = useRef(0);
+  const webRef = useRef(null), pending = useRef([]), injected = useRef(false), retries = useRef(0), wooliesReturnTab = useRef('home');
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recState = useAudioRecorderState(recorder, 250);
   const [mode,setMode]=useState('shop'),[tab,setTab]=useState('home'),[items,setItems]=useState([]),[open,setOpen]=useState(true),[status,setStatus]=useState(''),[busy,setBusy]=useState(false),[cartUrl,setCartUrl]=useState(CART_URL),[webKey,setWebKey]=useState(0);
+  const [accountView,setAccountView]=useState('main');
+  const [profile,setProfile]=useState({firstName:'',lastName:'',email:'',mobile:'',suburb:'',postcode:''});
+  const [preferences,setPreferences]=useState({matchMode:'best',preferSpecials:true,allowAlternatives:true,rememberBrands:true});
   const recording=!!recState?.isRecording,count=items.length,canSend=count>0&&!busy&&!recording;
   const listLabel=useMemo(()=>count?`Your list · ${count} ${count===1?'item':'items'}`:'Your list',[count]);
 
@@ -112,8 +141,8 @@ export default function StuffApp() {
   async function share(){if(!items.length){setStatus('Add some groceries first.');return}try{await Share.share({message:['Our grocery list:',...items.map(i=>`• ${title(i.name)} — ${detail(i)}`)].join('\n')})}catch(_){}}
   function editItem(item){if(!item)return;Alert.prompt('Edit item','Update the item name:',value=>{const name=String(value||'').trim();if(!name)return;setItems(v=>v.map(x=>x.id===item.id?{...x,name}:x));setStatus('');},'plain-text',title(item.name))}
   function clearAll(){if(!items.length)return;Alert.alert('Clear your list?','Remove all groceries from this list?',[{text:'Cancel',style:'cancel'},{text:'Clear all',style:'destructive',onPress:()=>{setItems([]);setOpen(true);setStatus('')}}])}
-  function send(){if(!canSend)return;pending.current=items.map(i=>({name:i.name,qty:i.quantity,quantity:i.quantity,unit:i.unit}));injected.current=false;retries.current=0;setStatus('Connecting to Woolies…');setCartUrl('https://www.woolworths.com.au/');setWebKey(k=>k+1);setMode('woolies')}
-  function back(){pending.current=[];injected.current=false;retries.current=0;setMode('shop');setStatus('')}
+  function send(){if(!canSend)return;wooliesReturnTab.current='home';pending.current=items.map(i=>({name:i.name,qty:i.quantity,quantity:i.quantity,unit:i.unit}));injected.current=false;retries.current=0;setStatus('Connecting to Woolies…');setCartUrl('https://www.woolworths.com.au/');setWebKey(k=>k+1);setMode('woolies')}
+  function back(){pending.current=[];injected.current=false;retries.current=0;setMode('shop');setTab(wooliesReturnTab.current||'home');setStatus('')}
   function openCart(){setStatus('Opening your Woolies cart…');setCartUrl(CART_URL+'?stuffShopping='+Date.now())}
   function onMessage(e){let m;try{m=JSON.parse(e.nativeEvent.data)}catch(_){return}if(m?.type==='WOOLIES_STATUS'){setStatus(m.message||'Building your Woolies cart…');return}if(m?.type==='WOOLIES_DONE'){const added=Number(m.added||0);pending.current=[];setStatus(added?`Done — ${added} ${added===1?'product':'products'} added.`:(m.message||'Nothing was added.'));if(added)setTimeout(openCart,350)}}
   function onLoad(e){
@@ -128,7 +157,7 @@ export default function StuffApp() {
     setTimeout(()=>webRef.current?.injectJavaScript(wooliesScript(pending.current)),1000);
   }
 
-  function goTab(next){setTab(next);setStatus('')}
+  function goTab(next){setTab(next);setAccountView('main');setStatus('')}
   function comingSoon(label){Alert.alert(label,`${label} is ready in the screen structure. We’ll wire the underlying account data next.`)}
   function householdInvite(){Alert.alert('Invite someone','Household invitations are the next shared-list feature to wire up.')}
   function howItWorks(){Alert.alert('How it works','1. Speak your grocery list.\n\n2. Check the items.\n\n3. Send them to Woolies.\n\n4. Review your Woolworths cart before checkout.')}
@@ -136,9 +165,14 @@ export default function StuffApp() {
   function privacy(){Alert.alert('Privacy','Stuff does not ask for or store your Woolworths password or payment details. Woolworths login and checkout stay with Woolworths. Voice recordings are sent for processing only when you tap to talk.')}
   function terms(){Alert.alert('Terms','Terms of use and the retailer integration disclaimer will live here.')}
   function about(){Alert.alert('Stuff the Shopping','Say what you need. We build the list and help put it into your Woolworths cart.')}
-  function disconnectWoolies(){Alert.alert('Disconnect Woolworths','This will clear the Woolworths session from this device once we wire the final session-control step. Your Woolworths password is never stored by Stuff.')}
+  function openWoolworthsFromAccount(){wooliesReturnTab.current='account';pending.current=[];injected.current=false;setStatus('Woolworths on this device');setCartUrl('https://www.woolworths.com.au/');setWebKey(k=>k+1);setMode('woolies')}
+  function saveProfile(){setAccountView('main');Alert.alert('Saved','Your details are saved for this app session. We’ll make them persistent when Stuff login is connected.')}
+  function savePreferences(){setAccountView('main');Alert.alert('Saved','Your preferences are saved for this app session. Next we can connect them to product matching and your Stuff account.')}
+  function signOut(){Alert.alert('Sign out','Stuff account login has not been connected yet, so there is no Stuff session to sign out of.')}
+  function deleteAccount(){Alert.alert('Delete account','There is no stored Stuff account in this prototype yet. Once login is connected, this will permanently delete the account, household membership, preferences and stored shopping data.')}
+  async function manageMicrophone(){try{await Linking.openSettings()}catch(_){Alert.alert('Settings','Open iPhone Settings and choose Stuff the Shopping to manage microphone access.')}}
 
-  if(mode==='woolies')return <SafeAreaView style={s.safe}><StatusBar barStyle="dark-content"/><View style={s.cartHead}><TouchableOpacity onPress={back} style={s.back}><Text style={s.backText}>‹ Shop</Text></TouchableOpacity><View style={{flex:1}}><Text style={s.cartTitle}>Woolies</Text><Text style={s.cartStatus} numberOfLines={1}>{status}</Text></View></View><WebView key={webKey} ref={webRef} source={{uri:cartUrl}} style={{flex:1}} onMessage={onMessage} onLoadEnd={onLoad} userAgent={UA} javaScriptEnabled domStorageEnabled sharedCookiesEnabled thirdPartyCookiesEnabled cacheEnabled incognito={false} setSupportMultipleWindows={false}/></SafeAreaView>;
+  if(mode==='woolies')return <SafeAreaView style={s.safe}><StatusBar barStyle="dark-content"/><View style={s.cartHead}><TouchableOpacity onPress={back} style={s.back}><Text style={s.backText}>‹ {wooliesReturnTab.current==='account'?'Account':'Shop'}</Text></TouchableOpacity><View style={{flex:1}}><Text style={s.cartTitle}>Woolies</Text><Text style={s.cartStatus} numberOfLines={1}>{status}</Text></View></View><WebView key={webKey} ref={webRef} source={{uri:cartUrl}} style={{flex:1}} onMessage={onMessage} onLoadEnd={onLoad} userAgent={UA} javaScriptEnabled domStorageEnabled sharedCookiesEnabled thirdPartyCookiesEnabled cacheEnabled incognito={false} setSupportMultipleWindows={false}/></SafeAreaView>;
 
   if(tab==='household')return <SafeAreaView style={s.safe}>
     <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
@@ -167,45 +201,95 @@ export default function StuffApp() {
     <BottomNav tab={tab} onChange={goTab}/>
   </SafeAreaView>;
 
+  if(tab==='account'&&accountView==='details')return <SafeAreaView style={s.safe}>
+    <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
+    <ScrollView contentContainerStyle={s.pageScreen} keyboardShouldPersistTaps="handled">
+      <PageHeader eyebrow="Your details" title="Personal details" lead="The basics we’ll use for your Stuff account and local shopping setup." onBack={()=>setAccountView('main')} />
+      <View style={s.formBlock}>
+        <Field label="First name" value={profile.firstName} onChangeText={v=>setProfile(p=>({...p,firstName:v}))} />
+        <Field label="Last name" value={profile.lastName} onChangeText={v=>setProfile(p=>({...p,lastName:v}))} />
+        <Field label="Email" value={profile.email} onChangeText={v=>setProfile(p=>({...p,email:v}))} keyboardType="email-address" autoCapitalize="none" />
+        <Field label="Mobile" value={profile.mobile} onChangeText={v=>setProfile(p=>({...p,mobile:v}))} keyboardType="phone-pad" />
+        <Field label="Suburb" value={profile.suburb} onChangeText={v=>setProfile(p=>({...p,suburb:v}))} />
+        <Field label="Postcode" value={profile.postcode} onChangeText={v=>setProfile(p=>({...p,postcode:v}))} keyboardType="number-pad" />
+      </View>
+      <TouchableOpacity style={s.primaryButton} onPress={saveProfile}><Text style={s.primaryButtonText}>Save details</Text></TouchableOpacity>
+      <Text style={s.formNote}>For now these details stay on this app session. Persistent account storage comes with Stuff login.</Text>
+    </ScrollView>
+    <BottomNav tab={tab} onChange={goTab}/>
+  </SafeAreaView>;
+
+  if(tab==='account'&&accountView==='woolworths')return <SafeAreaView style={s.safe}>
+    <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
+    <ScrollView contentContainerStyle={s.pageScreen}>
+      <PageHeader eyebrow="Shopping service" title="Woolworths" lead="Your Woolworths account stays separate from your Stuff account." onBack={()=>setAccountView('main')} />
+      <View style={s.wooliesAccountCard}>
+        <View style={s.wooliesAccountMark}><Text style={s.wooliesAccountMarkText}>W</Text></View>
+        <View style={{flex:1}}><Text style={s.wooliesAccountTitle}>Woolworths on this device</Text><Text style={s.wooliesAccountSub}>Sign in directly with Woolworths when you need to.</Text></View>
+      </View>
+      <View style={s.securityNote}>
+        <Text style={s.securityTitle}>Your Woolworths login stays private.</Text>
+        <Text style={s.securityCopy}>Stuff never asks for or stores your Woolworths password or payment details. Checkout remains entirely with Woolworths.</Text>
+      </View>
+      <TouchableOpacity style={s.primaryButton} onPress={openWoolworthsFromAccount}><Text style={s.primaryButtonText}>Open Woolworths</Text></TouchableOpacity>
+      <Text style={s.formNote}>We won’t label Woolworths “connected” until we can reliably verify the retailer session. A proper disconnect control comes with that session-management step.</Text>
+    </ScrollView>
+    <BottomNav tab={tab} onChange={goTab}/>
+  </SafeAreaView>;
+
+  if(tab==='account'&&accountView==='preferences')return <SafeAreaView style={s.safe}>
+    <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
+    <ScrollView contentContainerStyle={s.pageScreen}>
+      <PageHeader eyebrow="Shopping preferences" title="Product preferences" lead="Tell Stuff how you generally want products chosen." onBack={()=>setAccountView('main')} />
+
+      <Text style={s.sectionTitle}>Product matching</Text>
+      <View style={s.segmentWrap}>
+        <TouchableOpacity style={[s.segment,preferences.matchMode==='best'&&s.segmentActive]} onPress={()=>setPreferences(p=>({...p,matchMode:'best'}))}><Text style={[s.segmentText,preferences.matchMode==='best'&&s.segmentTextActive]}>Best match</Text></TouchableOpacity>
+        <TouchableOpacity style={[s.segment,preferences.matchMode==='cheapest'&&s.segmentActive]} onPress={()=>setPreferences(p=>({...p,matchMode:'cheapest'}))}><Text style={[s.segmentText,preferences.matchMode==='cheapest'&&s.segmentTextActive]}>Cheapest suitable</Text></TouchableOpacity>
+      </View>
+
+      <Text style={s.sectionTitle}>Defaults</Text>
+      <View style={s.menuBlock}>
+        <ToggleRow title="Prefer specials" sub="Choose a special when it’s still a good match" value={preferences.preferSpecials} onValueChange={v=>setPreferences(p=>({...p,preferSpecials:v}))} />
+        <ToggleRow title="Allow close alternatives" sub="Use a sensible substitute when the exact item isn’t available" value={preferences.allowAlternatives} onValueChange={v=>setPreferences(p=>({...p,allowAlternatives:v}))} />
+        <ToggleRow title="Remember usual brands" sub="Later, learn from the products you actually choose" value={preferences.rememberBrands} onValueChange={v=>setPreferences(p=>({...p,rememberBrands:v}))} />
+      </View>
+      <TouchableOpacity style={s.primaryButton} onPress={savePreferences}><Text style={s.primaryButtonText}>Save preferences</Text></TouchableOpacity>
+      <Text style={s.formNote}>These preferences are now captured in the app. We’ll connect them to persistent accounts and the matching engine in the next technical step.</Text>
+    </ScrollView>
+    <BottomNav tab={tab} onChange={goTab}/>
+  </SafeAreaView>;
+
   if(tab==='account')return <SafeAreaView style={s.safe}>
     <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
     <ScrollView contentContainerStyle={s.pageScreen}>
-      <Text style={s.brand}>stuff{`\n`}the{`\n`}shopping<Text style={s.dot}>.</Text></Text>
-      <View style={s.pageIntro}>
-        <Text style={s.pageEyebrow}>Account</Text>
-        <Text style={s.pageTitle}>Your account.</Text>
-        <Text style={s.pageLead}>Your details, shopping setup and personal preferences.</Text>
-      </View>
+      <PageHeader eyebrow="Account" title="Your account." lead="Your details, shopping setup and personal preferences." />
 
       <Text style={s.sectionTitle}>Your details</Text>
       <View style={s.menuBlock}>
-        <MenuRow title="Personal details" sub="Name, email, mobile, suburb and postcode" onPress={()=>comingSoon('Personal details')} />
+        <MenuRow title="Personal details" sub="Name, email, mobile, suburb and postcode" onPress={()=>setAccountView('details')} />
       </View>
 
       <Text style={s.sectionTitle}>Connected shopping services</Text>
       <View style={s.menuBlock}>
-        <MenuRow title="Woolworths" sub="Retailer login stays with Woolworths on this device" right="Manage" onPress={disconnectWoolies} />
-      </View>
-      <View style={s.securityNote}>
-        <Text style={s.securityTitle}>Your Woolworths login stays private.</Text>
-        <Text style={s.securityCopy}>Stuff never stores your Woolworths password or payment details. Checkout remains with Woolworths.</Text>
+        <MenuRow title="Woolworths" sub="Sign in to Woolworths when you send your shopping" right="Manage" onPress={()=>setAccountView('woolworths')} />
       </View>
 
       <Text style={s.sectionTitle}>Shopping preferences</Text>
       <View style={s.menuBlock}>
-        <MenuRow title="Preferred supermarket" sub="Woolworths" onPress={()=>comingSoon('Preferred supermarket')} />
-        <MenuRow title="Product preferences" sub="Usual brands, value choices and substitutions" onPress={()=>comingSoon('Product preferences')} />
+        <MenuRow title="Preferred supermarket" sub="Woolworths" right="" />
+        <MenuRow title="Product preferences" sub="Best match, specials, alternatives and usual brands" onPress={()=>setAccountView('preferences')} />
       </View>
 
       <Text style={s.sectionTitle}>Permissions</Text>
       <View style={s.menuBlock}>
-        <MenuRow title="Microphone" sub="Used only when you tap to talk" right="On" />
+        <MenuRow title="Microphone" sub="Used only when you tap to talk" right="Manage" onPress={manageMicrophone} />
       </View>
 
       <Text style={s.sectionTitle}>Account access</Text>
       <View style={s.menuBlock}>
-        <MenuRow title="Sign out" onPress={()=>comingSoon('Sign out')} />
-        <MenuRow title="Delete account" right="" onPress={()=>comingSoon('Delete account')} danger />
+        <MenuRow title="Sign out" onPress={signOut} />
+        <MenuRow title="Delete account" right="" onPress={deleteAccount} danger />
       </View>
     </ScrollView>
     <BottomNav tab={tab} onChange={goTab}/>
@@ -356,9 +440,29 @@ const s=StyleSheet.create({
   menuSub:{marginTop:4,color:'#69635A',fontSize:12,lineHeight:16,fontWeight:'600'},
   menuRight:{color:'#69635A',fontSize:14,fontWeight:'800'},
   danger:{color:'#C83D24'},
-  securityNote:{marginTop:12,padding:14,borderRadius:14,backgroundColor:'#FFF8D9'},
+  securityNote:{marginTop:14,padding:14,borderRadius:14,backgroundColor:'#FFF8D9'},
   securityTitle:{color:'#171717',fontSize:13,fontWeight:'900'},
   securityCopy:{marginTop:5,color:'#5D574B',fontSize:12,lineHeight:17,fontWeight:'600'},
+  inlineBack:{marginTop:20,alignSelf:'flex-start',paddingVertical:4,paddingRight:10},
+  inlineBackText:{color:'#171717',fontSize:14,fontWeight:'900'},
+  formBlock:{marginTop:24},
+  fieldWrap:{marginBottom:16},
+  fieldLabel:{marginBottom:6,color:'#55514A',fontSize:12,fontWeight:'800'},
+  field:{height:50,borderWidth:1,borderColor:'#BEB6A7',borderRadius:14,backgroundColor:'#FFFDF7',paddingHorizontal:14,color:'#171717',fontSize:16,fontWeight:'600'},
+  primaryButton:{marginTop:20,minHeight:52,borderRadius:26,backgroundColor:'#171717',alignItems:'center',justifyContent:'center',paddingHorizontal:18},
+  primaryButtonText:{color:'#FFFFFF',fontSize:15,fontWeight:'900'},
+  formNote:{marginTop:12,color:'#777169',fontSize:11,lineHeight:16,textAlign:'center',fontWeight:'600'},
+  wooliesAccountCard:{marginTop:26,minHeight:76,borderRadius:18,backgroundColor:'#006B54',padding:15,flexDirection:'row',alignItems:'center'},
+  wooliesAccountMark:{width:42,height:42,borderRadius:21,backgroundColor:'#8CC63F',alignItems:'center',justifyContent:'center',marginRight:12},
+  wooliesAccountMarkText:{color:'#FFFFFF',fontSize:22,fontWeight:'900',fontStyle:'italic'},
+  wooliesAccountTitle:{color:'#FFFFFF',fontSize:16,fontWeight:'900'},
+  wooliesAccountSub:{marginTop:4,color:'#E5F1ED',fontSize:11,lineHeight:15,fontWeight:'600'},
+  segmentWrap:{flexDirection:'row',borderWidth:1,borderColor:'#BEB6A7',borderRadius:14,overflow:'hidden'},
+  segment:{flex:1,minHeight:48,alignItems:'center',justifyContent:'center',paddingHorizontal:8,backgroundColor:'#FFFDF7'},
+  segmentActive:{backgroundColor:'#171717'},
+  segmentText:{color:'#55514A',fontSize:12,fontWeight:'800',textAlign:'center'},
+  segmentTextActive:{color:'#FFFFFF'},
+  toggleRow:{minHeight:72,flexDirection:'row',alignItems:'center',borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:'#D4CCBE'},
   version:{marginTop:28,color:'#8B8479',fontSize:11,textAlign:'center',fontWeight:'700'},
   bottomNav:{minHeight:82,backgroundColor:'#000000',paddingHorizontal:12,paddingTop:10,paddingBottom:10,flexDirection:'row',alignItems:'center',justifyContent:'space-around'},
   navItem:{flex:1,alignItems:'center',justifyContent:'center'},
