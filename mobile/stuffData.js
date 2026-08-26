@@ -160,10 +160,10 @@ export async function createStuffInvite(householdId, userId, name, contact) {
   return throwIfError(result);
 }
 
-export async function acceptStuffInvite(inviteToken) {
-  const token = String(inviteToken || '').trim();
-  if (!token) throw new Error('Enter an invite code.');
-  const result = await supabase.rpc('accept_stuff_household_invite', { invite_token: token });
+export async function acceptStuffInvite(inviteCode) {
+  const code = String(inviteCode || '').trim().toUpperCase();
+  if (!code) throw new Error('Enter an invite code.');
+  const result = await supabase.rpc('accept_stuff_household_invite_code', { code });
   const householdId = throwIfError(result);
   return householdId;
 }
