@@ -2,6 +2,9 @@
   const actions = document.querySelector('.voice-first-actions');
   if (!actions) return;
 
+  const SHARED_SHOP_ENDPOINT = 'https://wfhgyunfvdyxwtggntpc.supabase.co/functions/v1/hello-david-shared-shop';
+  const TOKEN_KEY = 'helloDavid.sharedShopToken.v1';
+
   const style = document.createElement('style');
   style.textContent = `
     .technical-only { display: none !important; }
@@ -41,6 +44,34 @@
     return document.documentElement.dataset.helloDavidWooliesHelper === 'ready';
   }
 
+  function validToken(value) {
+    return /^[0-9a-fA-F-]{36}$/.test(String(value || ''));
+  }
+
+  async function ensureHouseholdToken(items) {
+    const urlToken = new URLSearchParams(window.location.search).get('shop');
+    const stored = localStorage.getItem(TOKEN_KEY);
+    let token = validToken(urlToken) ? urlToken : (validToken(stored) ? stored : null);
+    if (token) return token;
+
+    const response = await fetch(SHARED_SHOP_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'create', items })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result?.success || !validToken(result.share_token)) {
+      throw new Error(result?.error || 'Could not create household memory.');
+    }
+
+    token = result.share_token;
+    localStorage.setItem(TOKEN_KEY, token);
+    const url = new URL(window.location.href);
+    url.searchParams.set('shop', token);
+    history.replaceState({}, '', url);
+    return token;
+  }
+
   function resetButton() {
     btn.disabled = false;
     btn.textContent = 'Send to Woolies';
@@ -55,7 +86,7 @@
     if (/could not|nothing/i.test(note.textContent)) resetButton();
   });
 
-  btn.addEventListener('click', () => {
+  btn.addEventListener('click', async () => {
     const items = currentItems();
     if (!items.length) {
       note.textContent = 'Add something to the shop first.';
@@ -68,9 +99,17 @@
 
     // Preferred path: Hello David native mobile app.
     if (inNativeApp()) {
+      let householdToken = null;
+      try {
+        householdToken = await ensureHouseholdToken(items);
+      } catch (error) {
+        console.warn('Hello David memory identity unavailable', error);
+      }
+
       window.ReactNativeWebView.postMessage(JSON.stringify({
         type: 'HELLO_DAVID_SEND_TO_WOOLIES',
-        items
+        items,
+        householdToken
       }));
       setTimeout(resetButton, 6000);
       return;
