@@ -4,6 +4,7 @@
 
   const SHARED_SHOP_ENDPOINT = 'https://wfhgyunfvdyxwtggntpc.supabase.co/functions/v1/hello-david-shared-shop';
   const TOKEN_KEY = 'helloDavid.sharedShopToken.v1';
+  const RETAILER_KEY = 'helloDavid.retailer.v1';
 
   const style = document.createElement('style');
   style.textContent = `
@@ -11,6 +12,7 @@
     .voice-first-actions { align-items: center; }
     .voice-primary { padding: 14px 22px; font-weight: 700; }
     .woolies-btn { background: #0b7a35; color: #fff; border-color: #0b7a35; font-weight: 700; }
+    .woolies-btn:disabled { opacity: .48; cursor: default; }
     .woolies-handoff-note { margin-top: 9px; font-size: 12px; color: var(--muted); line-height: 1.4; }
   `;
   document.head.appendChild(style);
@@ -19,12 +21,23 @@
   btn.type = 'button';
   btn.id = 'sendToWooliesBtn';
   btn.className = 'secondary-btn woolies-btn';
-  btn.textContent = 'Send to Woolies';
   actions.appendChild(btn);
 
   const note = document.createElement('div');
   note.className = 'woolies-handoff-note';
   actions.parentElement?.appendChild(note);
+
+  function preferredRetailer() {
+    return localStorage.getItem(RETAILER_KEY) || 'Woolworths';
+  }
+
+  function updateRetailerUI() {
+    const retailer = preferredRetailer();
+    const isWoolies = retailer === 'Woolworths';
+    btn.disabled = !isWoolies;
+    btn.textContent = isWoolies ? 'Send to Woolies' : 'Coles cart coming next';
+    note.textContent = isWoolies ? '' : 'Product picking works for Coles. Direct Coles cart handoff is the next connection.';
+  }
 
   function currentItems() {
     return [...document.querySelectorAll('.item-row')].map(row => {
@@ -73,20 +86,24 @@
   }
 
   function resetButton() {
-    btn.disabled = false;
-    btn.textContent = 'Send to Woolies';
+    updateRetailerUI();
   }
 
+  window.addEventListener('hello-david-retailer-change', updateRetailerUI);
+
   window.addEventListener('hello-david-woolies-helper-ready', () => {
-    note.textContent = '';
+    if (preferredRetailer() === 'Woolworths') note.textContent = '';
   });
 
   window.addEventListener('hello-david-woolies-status', () => {
+    if (preferredRetailer() !== 'Woolworths') return;
     note.textContent = document.documentElement.dataset.helloDavidWooliesStatus || '';
     if (/could not|nothing/i.test(note.textContent)) resetButton();
   });
 
   btn.addEventListener('click', async () => {
+    if (preferredRetailer() !== 'Woolworths') return;
+
     const items = currentItems();
     if (!items.length) {
       note.textContent = 'Add something to the shop first.';
@@ -95,9 +112,8 @@
 
     btn.disabled = true;
     btn.textContent = 'Building Woolies cart…';
-    note.textContent = 'Opening Woolies and matching your products. No copying or pasting.';
+    note.textContent = 'Opening Woolies. David will make the final product choices and avoid guessing.';
 
-    // Preferred path: Hello David native mobile app.
     if (inNativeApp()) {
       let householdToken = null;
       try {
@@ -115,7 +131,6 @@
       return;
     }
 
-    // Desktop prototype fallback while the mobile shell is being tested.
     if (helperReady()) {
       document.documentElement.dataset.helloDavidShop = JSON.stringify(items);
       window.dispatchEvent(new Event('hello-david-send-to-woolies'));
@@ -126,4 +141,6 @@
     note.textContent = 'Open Hello David in the mobile app to send this shop straight to Woolies.';
     resetButton();
   });
+
+  updateRetailerUI();
 })();
