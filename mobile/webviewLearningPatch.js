@@ -6,6 +6,8 @@ const OriginalWebView = WebViewModule.WebView;
 let proposed = [];
 let lastAlertSignature = '';
 let cartWatchSession = 0;
+let lastCartProducts = null;
+let pendingRemoved = [];
 
 function clean(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
@@ -25,6 +27,7 @@ const CATEGORY_RULES = [
   { test: /\bcheese\b|\bcheddar\b/i, terms: ['cheese','cheddar','tasty'] },
   { test: /\bavocados?\b/i, terms: ['avocado','avocados'] },
   { test: /\bmuffins?\b/i, terms: ['muffin','muffins','choc','chocolate'] },
+  { test: /\blaundry\b|\bdetergent\b/i, terms: ['laundry','detergent','liquid','wash'] },
   { test: /\btomatoes?\b/i, terms: ['tomato','tomatoes'] },
   { test: /\bapples?\b/i, terms: ['apple','apples'] },
   { test: /\bbananas?\b/i, terms: ['banana','bananas'] },
@@ -67,6 +70,80 @@ function patchMatcherScript(script) {
   return out;
 }
 
+function proposedForProduct(productId) {
+  return proposed.find(p => String(p?.productId || '') === String(productId || '')) || null;
+}
+
+function showReplacement(beforeProduct, afterProduct) {
+  if (!beforeProduct || !afterProduct) return;
+  const beforeId = String(beforeProduct.productId || '');
+  const afterId = String(afterProduct.productId || '');
+  if (!beforeId || !afterId || beforeId === afterId) return;
+
+  const original = proposedForProduct(beforeId);
+  const signature = `${beforeId}>${afterId}`;
+  if (signature === lastAlertSignature) return;
+  lastAlertSignature = signature;
+
+  const request = clean(original?.request) || 'Cart item';
+  const before = clean(original?.productName || beforeProduct.productName) || `Woolies product ${beforeId}`;
+  const after = clean(afterProduct.productName) || `Woolies product ${afterId}`;
+
+  Alert.alert(
+    'Stuff spotted your change',
+    `${request}\n${before}\n→ ${after}\n\nThat replacement is the useful signal Stuff can learn from.`,
+    [{ text: 'Got it' }]
+  );
+}
+
+function detectDirectCartReplacement(products) {
+  if (!Array.isArray(products) || !products.length) return;
+
+  if (!Array.isArray(lastCartProducts)) {
+    lastCartProducts = products;
+    return;
+  }
+
+  const previousById = new Map(lastCartProducts.map(p => [String(p.productId || ''), p]));
+  const currentById = new Map(products.map(p => [String(p.productId || ''), p]));
+  const removed = [...previousById.entries()].filter(([id]) => id && !currentById.has(id)).map(([,p]) => p);
+  const added = [...currentById.entries()].filter(([id]) => id && !previousById.has(id)).map(([,p]) => p);
+  lastCartProducts = products;
+
+  const now = Date.now();
+  pendingRemoved = pendingRemoved.filter(x => now - x.at < 30000);
+  for (const product of removed) pendingRemoved.push({ product, at: now });
+
+  if (!added.length || !pendingRemoved.length) return;
+
+  // The strongest learning signal is a simple cart swap: one product disappears,
+  // then another appears shortly afterwards. It does not depend on retailer naming.
+  if (added.length === 1 && pendingRemoved.length === 1) {
+    const before = pendingRemoved[0].product;
+    pendingRemoved = [];
+    showReplacement(before, added[0]);
+    return;
+  }
+
+  // If several edits happen together, use the original request only to pair them.
+  const available = [...pendingRemoved];
+  for (const after of added) {
+    let ranked = available
+      .map((entry, idx) => {
+        const original = proposedForProduct(entry.product.productId);
+        return { entry, idx, score: original ? candidateScore(original.request, after) : 0 };
+      })
+      .sort((a,b) => b.score - a.score);
+    if (!ranked.length) break;
+    const best = ranked[0];
+    if (best.score < 40) continue;
+    showReplacement(best.entry.product, after);
+    const removeIndex = pendingRemoved.findIndex(x => x === best.entry);
+    if (removeIndex >= 0) pendingRemoved.splice(removeIndex, 1);
+    available.splice(best.idx, 1);
+  }
+}
+
 function detectChanges(products) {
   if (!proposed.length || !Array.isArray(products) || !products.length) return;
 
@@ -92,23 +169,12 @@ function detectChanges(products) {
     changes.push({ original, replacement });
   }
 
-  if (!changes.length) return;
-  const signature = changes.map(c => `${c.original.productId}>${c.replacement.productId}`).sort().join('|');
-  if (!signature || signature === lastAlertSignature) return;
-  lastAlertSignature = signature;
-
-  const lines = changes.map(c => {
-    const request = clean(c.original.request) || 'Item';
-    const before = clean(c.original.productName) || `Woolies product ${c.original.productId}`;
-    const after = clean(c.replacement.productName) || `Woolies product ${c.replacement.productId}`;
-    return `${request}\n${before}\n→ ${after}`;
-  });
-
-  Alert.alert(
-    'Stuff spotted your change',
-    `${lines.join('\n\n')}\n\nThis is the signal Stuff can use to learn your household’s usual products.`,
-    [{ text: 'Got it' }]
-  );
+  for (const change of changes) {
+    showReplacement(
+      { productId: change.original.productId, productName: change.original.productName },
+      change.replacement
+    );
+  }
 }
 
 const CART_WATCH_SCRIPT = `
@@ -138,9 +204,9 @@ const CART_WATCH_SCRIPT = `
   const schedule = () => { clearTimeout(timer); timer = setTimeout(collect, 450); };
   const observer = new MutationObserver(schedule);
   observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true });
-  const interval = setInterval(collect, 2500);
+  const interval = setInterval(collect, 2000);
   window.__stuffCartWatcher = { send: collect, observer, interval };
-  setTimeout(collect, 600);
+  setTimeout(collect, 500);
 })();true;
 `;
 
@@ -173,6 +239,8 @@ if (OriginalWebView && !OriginalWebView.__stuffLearningWrapped) {
       if (parsed?.type === 'WOOLIES_DONE') {
         proposed = Array.isArray(parsed.remembered) ? parsed.remembered : [];
         lastAlertSignature = '';
+        lastCartProducts = null;
+        pendingRemoved = [];
         cartWatchSession += 1;
 
         // Do not let the app reinforce its own first guess as a household preference.
@@ -185,7 +253,9 @@ if (OriginalWebView && !OriginalWebView.__stuffLearningWrapped) {
       }
 
       if (parsed?.type === 'STUFF_CART_SNAPSHOT') {
-        detectChanges(parsed.products || []);
+        const products = parsed.products || [];
+        detectDirectCartReplacement(products);
+        detectChanges(products);
         return;
       }
 
@@ -199,7 +269,7 @@ if (OriginalWebView && !OriginalWebView.__stuffLearningWrapped) {
         const sessionAtLoad = cartWatchSession;
         setTimeout(() => {
           if (sessionAtLoad === cartWatchSession) innerRef.current?.injectJavaScript(CART_WATCH_SCRIPT);
-        }, 900);
+        }, 700);
       }
     }, [props.onLoadEnd, props?.source?.uri]);
 
