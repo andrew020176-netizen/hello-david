@@ -1,7 +1,20 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, SafeAreaView, ScrollView, Share, StatusBar, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from 'expo-audio';
+import { useStuffAuth } from './AuthContext';
+import {
+  cancelStuffInvite,
+  createStuffInvite,
+  deleteStuffAccount,
+  loadStuffBundle,
+  removeStuffMember,
+  saveStuffHouseholdName,
+  saveStuffList,
+  saveStuffPreferences,
+  saveStuffProfile,
+  subscribeStuffList,
+} from './stuffData';
 
 const AUDIO_URL = 'https://wfhgyunfvdyxwtggntpc.supabase.co/functions/v1/hello-david-process-audio';
 const CART_URL = 'https://www.woolworths.com.au/shop/cart';
@@ -94,10 +107,10 @@ function PageHeader({eyebrow,title:pageTitle,lead,onBack,backLabel='Back'}) {
   </>;
 }
 
-function Field({label,value,onChangeText,keyboardType='default',autoCapitalize='sentences',placeholder=''}) {
+function Field({label,value,onChangeText,keyboardType='default',autoCapitalize='sentences',placeholder='',secureTextEntry=false,editable=true}) {
   return <View style={s.fieldWrap}>
     <Text style={s.fieldLabel}>{label}</Text>
-    <TextInput style={s.field} value={value} onChangeText={onChangeText} keyboardType={keyboardType} autoCapitalize={autoCapitalize} placeholder={placeholder} placeholderTextColor="#8B8479" />
+    <TextInput style={[s.field,!editable&&s.fieldDisabled]} value={value} onChangeText={onChangeText} keyboardType={keyboardType} autoCapitalize={autoCapitalize} placeholder={placeholder} placeholderTextColor="#8B8479" secureTextEntry={secureTextEntry} editable={editable} />
   </View>;
 }
 
@@ -114,19 +127,137 @@ function InfoBlock({title:blockTitle,children}) {
 
 export default function StuffApp() {
   const webRef = useRef(null), pending = useRef([]), injected = useRef(false), retries = useRef(0), wooliesReturnTab = useRef('home');
+  const itemsRef = useRef([]), saveTimer = useRef(null), lastSyncedList = useRef('');
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recState = useAudioRecorderState(recorder, 250);
+  const { user, loading:authLoading, signIn, signUp, signOut:stuffSignOut } = useStuffAuth();
   const [mode,setMode]=useState('shop'),[tab,setTab]=useState('home'),[items,setItems]=useState([]),[open,setOpen]=useState(true),[status,setStatus]=useState(''),[busy,setBusy]=useState(false),[cartUrl,setCartUrl]=useState(CART_URL),[webKey,setWebKey]=useState(0);
   const [accountView,setAccountView]=useState('main');
   const [profile,setProfile]=useState({firstName:'',lastName:'',email:'',mobile:'',suburb:'',postcode:''});
   const [preferences,setPreferences]=useState({matchMode:'best',preferSpecials:true,allowAlternatives:true,rememberBrands:true});
   const [householdView,setHouseholdView]=useState('main');
+  const [householdId,setHouseholdId]=useState(null);
   const [householdName,setHouseholdName]=useState('My household');
-  const [householdMembers,setHouseholdMembers]=useState([{id:'me',name:'You',contact:'This device',role:'Owner',status:'Active'}]);
+  const [householdMembers,setHouseholdMembers]=useState([]);
   const [invite,setInvite]=useState({name:'',contact:''});
   const [moreView,setMoreView]=useState('main');
+  const [authForm,setAuthForm]=useState({email:'',password:''});
+  const [authBusy,setAuthBusy]=useState(false),[dataBusy,setDataBusy]=useState(false),[dataReady,setDataReady]=useState(false);
   const recording=!!recState?.isRecording,count=items.length,canSend=count>0&&!busy&&!recording;
   const listLabel=useMemo(()=>count?`Your list · ${count} ${count===1?'item':'items'}`:'Your list',[count]);
+  const activeMemberCount=householdMembers.filter(m=>m.kind==='member').length;
+
+  useEffect(()=>{ itemsRef.current=items; },[items]);
+
+  useEffect(()=>{
+    let cancelled=false;
+    if(authLoading)return;
+
+    if(!user){
+      setDataReady(false);
+      setHouseholdId(null);
+      setHouseholdName('My household');
+      setHouseholdMembers([]);
+      setProfile({firstName:'',lastName:'',email:'',mobile:'',suburb:'',postcode:''});
+      setPreferences({matchMode:'best',preferSpecials:true,allowAlternatives:true,rememberBrands:true});
+      lastSyncedList.current='';
+      return;
+    }
+
+    (async()=>{
+      setDataBusy(true);
+      setDataReady(false);
+      try{
+        const localItems=[...itemsRef.current];
+        const bundle=await loadStuffBundle(user);
+        if(cancelled)return;
+        const p=bundle?.profile||{},pref=bundle?.preferences||{};
+        setHouseholdId(bundle?.householdId||null);
+        setProfile({
+          firstName:p.first_name||'',
+          lastName:p.last_name||'',
+          email:user.email||'',
+          mobile:p.mobile||'',
+          suburb:p.suburb||'',
+          postcode:p.postcode||'',
+        });
+        setPreferences({
+          matchMode:pref.match_mode==='cheapest'?'cheapest':'best',
+          preferSpecials:pref.prefer_specials!==false,
+          allowAlternatives:pref.allow_alternatives!==false,
+          rememberBrands:pref.remember_brands!==false,
+        });
+        setHouseholdName(bundle?.household?.name||'My household');
+
+        const selfName=[p.first_name,p.last_name].filter(Boolean).join(' ').trim()||'You';
+        const memberRows=(bundle?.members||[]).map(m=>({
+          id:`member-${m.user_id}`,
+          kind:'member',
+          dbUserId:m.user_id,
+          name:m.user_id===user.id?selfName:'Household member',
+          contact:m.user_id===user.id?(user.email||'Your Stuff account'):'Shared household member',
+          role:m.role==='owner'?'Owner':'Member',
+          status:'Active',
+        }));
+        const inviteRows=(bundle?.invites||[]).filter(x=>x.status==='pending').map(x=>({
+          id:`invite-${x.id}`,
+          inviteId:x.id,
+          kind:'invite',
+          name:x.invitee_name||'Invited member',
+          contact:x.contact,
+          role:'Member',
+          status:'Invite pending',
+        }));
+        setHouseholdMembers([...memberRows,...inviteRows]);
+
+        const remoteItems=Array.isArray(bundle?.list?.items)?bundle.list.items:[];
+        if(remoteItems.length){
+          lastSyncedList.current=JSON.stringify(remoteItems);
+          setItems(remoteItems);
+        }else if(localItems.length&&bundle?.householdId){
+          await saveStuffList(bundle.householdId,user.id,localItems);
+          lastSyncedList.current=JSON.stringify(localItems);
+          if(!cancelled)setItems(localItems);
+        }else{
+          lastSyncedList.current='[]';
+          setItems([]);
+        }
+        if(!cancelled)setDataReady(true);
+      }catch(e){
+        if(!cancelled)Alert.alert('Could not load your Stuff account',e?.message||'Please try again.');
+      }finally{
+        if(!cancelled)setDataBusy(false);
+      }
+    })();
+
+    return()=>{cancelled=true};
+  },[user?.id,authLoading]);
+
+  useEffect(()=>{
+    if(!user?.id||!householdId||!dataReady)return;
+    const serial=JSON.stringify(items);
+    if(serial===lastSyncedList.current)return;
+    clearTimeout(saveTimer.current);
+    saveTimer.current=setTimeout(async()=>{
+      try{
+        await saveStuffList(householdId,user.id,itemsRef.current);
+        lastSyncedList.current=JSON.stringify(itemsRef.current);
+      }catch(e){
+        setStatus('Could not sync the shared list.');
+      }
+    },700);
+    return()=>clearTimeout(saveTimer.current);
+  },[items,user?.id,householdId,dataReady]);
+
+  useEffect(()=>{
+    if(!user?.id||!householdId||!dataReady)return;
+    return subscribeStuffList(householdId,next=>{
+      const serial=JSON.stringify(next);
+      if(serial===JSON.stringify(itemsRef.current))return;
+      lastSyncedList.current=serial;
+      setItems(next);
+    });
+  },[user?.id,householdId,dataReady]);
 
   async function processAudio(uri){
     if(!uri){setStatus("Couldn't save that recording. Try again.");return}
@@ -167,26 +298,169 @@ export default function StuffApp() {
   }
 
   function goTab(next){setTab(next);setAccountView('main');setHouseholdView('main');setMoreView('main');setStatus('')}
+  function goToStuffLogin(){setTab('account');setAccountView('auth');setHouseholdView('main')}
   function openWoolworthsFromAccount(){wooliesReturnTab.current='account';pending.current=[];injected.current=false;setStatus('Woolworths on this device');setCartUrl('https://www.woolworths.com.au/');setWebKey(k=>k+1);setMode('woolies')}
-  function saveProfile(){setAccountView('main');Alert.alert('Saved','Your details are saved for this app session. We’ll make them persistent when Stuff login is connected.')}
-  function savePreferences(){setAccountView('main');Alert.alert('Saved','Your preferences are saved for this app session. Next we can connect them to product matching and your Stuff account.')}
-  function signOut(){Alert.alert('Sign out','Stuff account login has not been connected yet, so there is no Stuff session to sign out of.')}
-  function deleteAccount(){Alert.alert('Delete account','There is no stored Stuff account in this prototype yet. Once login is connected, this will permanently delete the account, household membership, preferences and stored shopping data.')}
+
+  async function handleSignIn(){
+    const email=authForm.email.trim(),password=authForm.password;
+    if(!email||!password){Alert.alert('Sign in','Enter your email and password.');return}
+    setAuthBusy(true);
+    try{
+      const {error}=await signIn(email,password);
+      if(error)throw error;
+      setAuthForm({email:'',password:''});
+      setAccountView('main');
+    }catch(e){Alert.alert('Could not sign in',e?.message||'Check your details and try again.')}finally{setAuthBusy(false)}
+  }
+
+  async function handleSignUp(){
+    const email=authForm.email.trim(),password=authForm.password;
+    if(!email||!password){Alert.alert('Create account','Enter your email and a password.');return}
+    if(password.length<8){Alert.alert('Create account','Use a password with at least 8 characters.');return}
+    setAuthBusy(true);
+    try{
+      const {error,needsEmailConfirmation}=await signUp(email,password);
+      if(error)throw error;
+      if(needsEmailConfirmation){
+        Alert.alert('Check your email','We sent you a confirmation link. Confirm the email, then come back here and sign in with the password you just created.');
+      }else{
+        setAuthForm({email:'',password:''});
+        setAccountView('main');
+      }
+    }catch(e){Alert.alert('Could not create account',e?.message||'Please try again.')}finally{setAuthBusy(false)}
+  }
+
+  async function saveProfile(){
+    if(!user){goToStuffLogin();return}
+    setDataBusy(true);
+    try{
+      const result=await saveStuffProfile(user.id,profile);
+      setAccountView('main');
+      Alert.alert('Saved',result?.emailChangeRequested?'Your details are saved. Check your email to confirm the new email address.':'Your account details are saved.');
+    }catch(e){Alert.alert('Could not save details',e?.message||'Please try again.')}finally{setDataBusy(false)}
+  }
+
+  async function savePreferences(){
+    if(!user){goToStuffLogin();return}
+    setDataBusy(true);
+    try{
+      await saveStuffPreferences(user.id,preferences);
+      setAccountView('main');
+      Alert.alert('Saved','Your shopping preferences are saved.');
+    }catch(e){Alert.alert('Could not save preferences',e?.message||'Please try again.')}finally{setDataBusy(false)}
+  }
+
+  function signOut(){
+    if(!user){goToStuffLogin();return}
+    Alert.alert('Sign out?','Your shared household data will stay safely in your Stuff account.',[
+      {text:'Cancel',style:'cancel'},
+      {text:'Sign out',onPress:async()=>{
+        setDataBusy(true);
+        try{
+          const {error}=await stuffSignOut();
+          if(error)throw error;
+          setItems([]);
+          setTab('home');
+          setAccountView('main');
+        }catch(e){Alert.alert('Could not sign out',e?.message||'Please try again.')}finally{setDataBusy(false)}
+      }}
+    ]);
+  }
+
+  function deleteAccount(){
+    if(!user)return;
+    Alert.alert('Delete your Stuff account?','This permanently deletes your Stuff account, household, preferences and stored shopping data. This cannot be undone.',[
+      {text:'Cancel',style:'cancel'},
+      {text:'Delete account',style:'destructive',onPress:()=>Alert.alert('Are you sure?','Your Stuff account and stored household data will be permanently deleted.',[
+        {text:'Cancel',style:'cancel'},
+        {text:'Delete permanently',style:'destructive',onPress:async()=>{
+          setDataBusy(true);
+          try{
+            await deleteStuffAccount();
+            setItems([]);
+            setTab('home');
+            setAccountView('main');
+            Alert.alert('Account deleted','Your Stuff account has been deleted.');
+          }catch(e){Alert.alert('Could not delete account',e?.message||'Please try again.')}finally{setDataBusy(false)}
+        }}
+      ])}
+    ]);
+  }
+
   async function manageMicrophone(){try{await Linking.openSettings()}catch(_){Alert.alert('Settings','Open iPhone Settings and choose Stuff the Shopping to manage microphone access.')}}
-  function saveHouseholdName(){const clean=householdName.trim();if(!clean){Alert.alert('Household name','Give your household a name first.');return}setHouseholdName(clean);setHouseholdView('main');Alert.alert('Saved','Household name saved for this app session.')}
-  function sendHouseholdInvite(){const name=invite.name.trim(),contact=invite.contact.trim();if(!name||!contact){Alert.alert('Invite someone','Add their name and email or mobile number.');return}setHouseholdMembers(v=>[...v,{id:`invite-${Date.now()}`,name,contact,role:'Member',status:'Invite pending'}]);setInvite({name:'',contact:''});setHouseholdView('members');Alert.alert('Invite prepared','The member is shown as pending. Sending the real invitation will be wired when Stuff accounts are connected.')}
-  function removeMember(member){if(member.id==='me')return;Alert.alert('Remove member?',`Remove ${member.name} from this household?`,[{text:'Cancel',style:'cancel'},{text:'Remove',style:'destructive',onPress:()=>setHouseholdMembers(v=>v.filter(x=>x.id!==member.id))}])}
+
+  async function saveHouseholdNameAction(){
+    const clean=householdName.trim();
+    if(!clean){Alert.alert('Household name','Give your household a name first.');return}
+    if(!user||!householdId){goToStuffLogin();return}
+    setDataBusy(true);
+    try{
+      await saveStuffHouseholdName(householdId,clean);
+      setHouseholdName(clean);
+      setHouseholdView('main');
+      Alert.alert('Saved','Household name updated.');
+    }catch(e){Alert.alert('Could not save household',e?.message||'Please try again.')}finally{setDataBusy(false)}
+  }
+
+  async function sendHouseholdInvite(){
+    const name=invite.name.trim(),contact=invite.contact.trim();
+    if(!name||!contact){Alert.alert('Invite someone','Add their name and email or mobile number.');return}
+    if(!user||!householdId){goToStuffLogin();return}
+    setDataBusy(true);
+    try{
+      const row=await createStuffInvite(householdId,user.id,name,contact);
+      setHouseholdMembers(v=>[{id:`invite-${row.id}`,inviteId:row.id,kind:'invite',name:row.invitee_name||name,contact:row.contact,role:'Member',status:'Invite pending'},...v]);
+      setInvite({name:'',contact:''});
+      setHouseholdView('members');
+      Alert.alert('Invite saved','The invitation is now stored as pending. We’ll add delivery and invite acceptance next.');
+    }catch(e){Alert.alert('Could not create invite',e?.message||'Please try again.')}finally{setDataBusy(false)}
+  }
+
+  function removeMember(member){
+    if(!user||!householdId)return;
+    if(member.dbUserId===user.id&&member.role==='Owner')return;
+    const label=member.kind==='invite'?'Cancel invite?':'Remove member?';
+    const copy=member.kind==='invite'?`Cancel the invitation for ${member.name}?`:`Remove ${member.name} from this household?`;
+    Alert.alert(label,copy,[{text:'Cancel',style:'cancel'},{text:member.kind==='invite'?'Cancel invite':'Remove',style:'destructive',onPress:async()=>{
+      setDataBusy(true);
+      try{
+        if(member.kind==='invite')await cancelStuffInvite(member.inviteId);
+        else await removeStuffMember(householdId,member.dbUserId);
+        setHouseholdMembers(v=>v.filter(x=>x.id!==member.id));
+      }catch(e){Alert.alert('Could not update household',e?.message||'Please try again.')}finally{setDataBusy(false)}
+    }}]);
+  }
+
   function reportProblem(){Alert.alert('Report a problem','We’ll connect this to a support channel before release. For now this confirms where problem reporting will live.')}
 
   if(mode==='woolies')return <SafeAreaView style={s.safe}><StatusBar barStyle="dark-content"/><View style={s.cartHead}><TouchableOpacity onPress={back} style={s.back}><Text style={s.backText}>‹ {wooliesReturnTab.current==='account'?'Account':'Shop'}</Text></TouchableOpacity><View style={{flex:1}}><Text style={s.cartTitle}>Woolies</Text><Text style={s.cartStatus} numberOfLines={1}>{status}</Text></View></View><WebView key={webKey} ref={webRef} source={{uri:cartUrl}} style={{flex:1}} onMessage={onMessage} onLoadEnd={onLoad} userAgent={UA} javaScriptEnabled domStorageEnabled sharedCookiesEnabled thirdPartyCookiesEnabled cacheEnabled incognito={false} setSupportMultipleWindows={false}/></SafeAreaView>;
+
+  if(tab==='household'&&!user)return <SafeAreaView style={s.safe}>
+    <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
+    <ScrollView contentContainerStyle={s.pageScreen}>
+      <PageHeader eyebrow="Household" title="Your household." lead="Create a Stuff account to keep one shared grocery list across devices and people." />
+      <View style={s.householdHero}>
+        <Text style={s.heroKicker}>YOUR CURRENT LIST</Text>
+        <Text style={s.heroNumber}>{count}</Text>
+        <Text style={s.heroCopy}>{count===1?'item':'items'} ready to bring into your household</Text>
+        <TouchableOpacity style={s.heroButton} onPress={()=>goTab('home')}><Text style={s.heroButtonText}>View shopping list →</Text></TouchableOpacity>
+      </View>
+      <View style={s.authCard}>
+        <Text style={s.authCardTitle}>Save it. Share it. Keep it synced.</Text>
+        <Text style={s.authCardCopy}>Sign in or create a Stuff account. Your current list will be brought into your household the first time you sign in.</Text>
+        <TouchableOpacity style={s.primaryButton} onPress={goToStuffLogin}><Text style={s.primaryButtonText}>Sign in or create account</Text></TouchableOpacity>
+      </View>
+    </ScrollView>
+    <BottomNav tab={tab} onChange={goTab}/>
+  </SafeAreaView>;
 
   if(tab==='household'&&householdView==='name')return <SafeAreaView style={s.safe}>
     <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
     <ScrollView contentContainerStyle={s.pageScreen} keyboardShouldPersistTaps="handled">
       <PageHeader eyebrow="Household" title="Household name" lead="Give the shared home shopping space a name everyone will recognise." onBack={()=>setHouseholdView('main')} backLabel="Household" />
       <View style={s.formBlock}><Field label="Household name" value={householdName} onChangeText={setHouseholdName} placeholder="My household" /></View>
-      <TouchableOpacity style={s.primaryButton} onPress={saveHouseholdName}><Text style={s.primaryButtonText}>Save household name</Text></TouchableOpacity>
-      <Text style={s.formNote}>This is stored for the current app session until household accounts are connected.</Text>
+      <TouchableOpacity style={[s.primaryButton,dataBusy&&s.buttonDisabled]} onPress={saveHouseholdNameAction} disabled={dataBusy}>{dataBusy?<ActivityIndicator color="#FFFFFF"/>:<Text style={s.primaryButtonText}>Save household name</Text>}</TouchableOpacity>
+      <Text style={s.formNote}>This name is stored with the shared household.</Text>
     </ScrollView>
     <BottomNav tab={tab} onChange={goTab}/>
   </SafeAreaView>;
@@ -194,12 +468,13 @@ export default function StuffApp() {
   if(tab==='household'&&householdView==='members')return <SafeAreaView style={s.safe}>
     <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
     <ScrollView contentContainerStyle={s.pageScreen}>
-      <PageHeader eyebrow="Household" title="Members" lead="Everyone here will eventually be able to add to the same household shopping list." onBack={()=>setHouseholdView('main')} backLabel="Household" />
+      <PageHeader eyebrow="Household" title="Members" lead="People in this household share the same grocery list." onBack={()=>setHouseholdView('main')} backLabel="Household" />
       <View style={s.memberBlock}>
+        {!householdMembers.length&&<Text style={s.empty}>No household members loaded.</Text>}
         {householdMembers.map(member=><View key={member.id} style={s.memberRow}>
           <View style={s.memberAvatar}><Text style={s.memberAvatarText}>{member.name.slice(0,1).toUpperCase()}</Text></View>
           <View style={{flex:1}}><Text style={s.memberName}>{member.name}</Text><Text style={s.memberMeta}>{member.role} · {member.status}</Text><Text style={s.memberContact}>{member.contact}</Text></View>
-          {member.id!=='me'&&<TouchableOpacity onPress={()=>removeMember(member)} style={s.memberRemove}><Text style={s.memberRemoveText}>Remove</Text></TouchableOpacity>}
+          {!((member.dbUserId===user?.id)&&member.role==='Owner')&&<TouchableOpacity onPress={()=>removeMember(member)} style={s.memberRemove}><Text style={s.memberRemoveText}>{member.kind==='invite'?'Cancel':'Remove'}</Text></TouchableOpacity>}
         </View>)}
       </View>
       <TouchableOpacity style={s.primaryButton} onPress={()=>setHouseholdView('invite')}><Text style={s.primaryButtonText}>Invite someone</Text></TouchableOpacity>
@@ -210,13 +485,13 @@ export default function StuffApp() {
   if(tab==='household'&&householdView==='invite')return <SafeAreaView style={s.safe}>
     <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
     <ScrollView contentContainerStyle={s.pageScreen} keyboardShouldPersistTaps="handled">
-      <PageHeader eyebrow="Household" title="Invite someone" lead="Invite another person to use the same household grocery list." onBack={()=>setHouseholdView('members')} backLabel="Members" />
+      <PageHeader eyebrow="Household" title="Invite someone" lead="Prepare an invitation for another person to use the same household grocery list." onBack={()=>setHouseholdView('members')} backLabel="Members" />
       <View style={s.formBlock}>
         <Field label="Name" value={invite.name} onChangeText={v=>setInvite(x=>({...x,name:v}))} placeholder="Name" />
         <Field label="Email or mobile" value={invite.contact} onChangeText={v=>setInvite(x=>({...x,contact:v}))} autoCapitalize="none" placeholder="Email or mobile" />
       </View>
-      <TouchableOpacity style={s.primaryButton} onPress={sendHouseholdInvite}><Text style={s.primaryButtonText}>Send invite</Text></TouchableOpacity>
-      <Text style={s.formNote}>Real invitations require Stuff login and a shared household database. For now we’ll capture the flow and show the invitation as pending.</Text>
+      <TouchableOpacity style={[s.primaryButton,dataBusy&&s.buttonDisabled]} onPress={sendHouseholdInvite} disabled={dataBusy}>{dataBusy?<ActivityIndicator color="#FFFFFF"/>:<Text style={s.primaryButtonText}>Save invite</Text>}</TouchableOpacity>
+      <Text style={s.formNote}>The invite is stored securely as pending. Delivery and acceptance are the next household step.</Text>
     </ScrollView>
     <BottomNav tab={tab} onChange={goTab}/>
   </SafeAreaView>;
@@ -236,14 +511,29 @@ export default function StuffApp() {
       <Text style={s.sectionTitle}>Household</Text>
       <View style={s.menuBlock}>
         <MenuRow title="Household name" sub={householdName} onPress={()=>setHouseholdView('name')} />
-        <MenuRow title="Members" sub={`${householdMembers.length} ${householdMembers.length===1?'member':'members'}`} onPress={()=>setHouseholdView('members')} />
-        <MenuRow title="Invite someone" sub="Let another person add to the same list" onPress={()=>setHouseholdView('invite')} />
+        <MenuRow title="Members" sub={`${activeMemberCount} ${activeMemberCount===1?'member':'members'}`} onPress={()=>setHouseholdView('members')} />
+        <MenuRow title="Invite someone" sub="Add another person to the shared household" onPress={()=>setHouseholdView('invite')} />
       </View>
 
       <View style={s.sharedNote}>
-        <Text style={s.sharedNoteTitle}>One household. One live list.</Text>
-        <Text style={s.sharedNoteCopy}>When login and sync are connected, every household member will see the same list and changes will update across devices.</Text>
+        <Text style={s.sharedNoteTitle}>Your list is now stored with your household.</Text>
+        <Text style={s.sharedNoteCopy}>Changes to the list sync through Stuff when you’re signed in. Multi-person invite acceptance is the next household step.</Text>
       </View>
+    </ScrollView>
+    <BottomNav tab={tab} onChange={goTab}/>
+  </SafeAreaView>;
+
+  if(tab==='account'&&accountView==='auth')return <SafeAreaView style={s.safe}>
+    <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
+    <ScrollView contentContainerStyle={s.pageScreen} keyboardShouldPersistTaps="handled">
+      <PageHeader eyebrow="Stuff account" title="Save your household." lead="Sign in to keep your list, preferences and household available across devices." onBack={()=>setAccountView('main')} backLabel="Account" />
+      <View style={s.formBlock}>
+        <Field label="Email" value={authForm.email} onChangeText={v=>setAuthForm(x=>({...x,email:v}))} keyboardType="email-address" autoCapitalize="none" placeholder="you@example.com" />
+        <Field label="Password" value={authForm.password} onChangeText={v=>setAuthForm(x=>({...x,password:v}))} autoCapitalize="none" placeholder="At least 8 characters" secureTextEntry />
+      </View>
+      <TouchableOpacity style={[s.primaryButton,authBusy&&s.buttonDisabled]} onPress={handleSignIn} disabled={authBusy}>{authBusy?<ActivityIndicator color="#FFFFFF"/>:<Text style={s.primaryButtonText}>Sign in</Text>}</TouchableOpacity>
+      <TouchableOpacity style={[s.secondaryButton,authBusy&&s.buttonDisabled]} onPress={handleSignUp} disabled={authBusy}><Text style={s.secondaryButtonText}>Create account</Text></TouchableOpacity>
+      <Text style={s.formNote}>Your Stuff login is separate from Woolworths. We never ask for your Woolworths password here.</Text>
     </ScrollView>
     <BottomNav tab={tab} onChange={goTab}/>
   </SafeAreaView>;
@@ -251,7 +541,7 @@ export default function StuffApp() {
   if(tab==='account'&&accountView==='details')return <SafeAreaView style={s.safe}>
     <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
     <ScrollView contentContainerStyle={s.pageScreen} keyboardShouldPersistTaps="handled">
-      <PageHeader eyebrow="Your details" title="Personal details" lead="The basics we’ll use for your Stuff account and local shopping setup." onBack={()=>setAccountView('main')} backLabel="Account" />
+      <PageHeader eyebrow="Your details" title="Personal details" lead="The basics we use for your Stuff account and local shopping setup." onBack={()=>setAccountView('main')} backLabel="Account" />
       <View style={s.formBlock}>
         <Field label="First name" value={profile.firstName} onChangeText={v=>setProfile(p=>({...p,firstName:v}))} />
         <Field label="Last name" value={profile.lastName} onChangeText={v=>setProfile(p=>({...p,lastName:v}))} />
@@ -260,8 +550,8 @@ export default function StuffApp() {
         <Field label="Suburb" value={profile.suburb} onChangeText={v=>setProfile(p=>({...p,suburb:v}))} />
         <Field label="Postcode" value={profile.postcode} onChangeText={v=>setProfile(p=>({...p,postcode:v}))} keyboardType="number-pad" />
       </View>
-      <TouchableOpacity style={s.primaryButton} onPress={saveProfile}><Text style={s.primaryButtonText}>Save details</Text></TouchableOpacity>
-      <Text style={s.formNote}>For now these details stay on this app session. Persistent account storage comes with Stuff login.</Text>
+      <TouchableOpacity style={[s.primaryButton,dataBusy&&s.buttonDisabled]} onPress={saveProfile} disabled={dataBusy}>{dataBusy?<ActivityIndicator color="#FFFFFF"/>:<Text style={s.primaryButtonText}>Save details</Text>}</TouchableOpacity>
+      <Text style={s.formNote}>These details are stored against your Stuff account. Changing email may require confirmation.</Text>
     </ScrollView>
     <BottomNav tab={tab} onChange={goTab}/>
   </SafeAreaView>;
@@ -301,8 +591,8 @@ export default function StuffApp() {
         <ToggleRow title="Allow close alternatives" sub="Use a sensible substitute when the exact item isn’t available" value={preferences.allowAlternatives} onValueChange={v=>setPreferences(p=>({...p,allowAlternatives:v}))} />
         <ToggleRow title="Remember usual brands" sub="Later, learn from the products you actually choose" value={preferences.rememberBrands} onValueChange={v=>setPreferences(p=>({...p,rememberBrands:v}))} />
       </View>
-      <TouchableOpacity style={s.primaryButton} onPress={savePreferences}><Text style={s.primaryButtonText}>Save preferences</Text></TouchableOpacity>
-      <Text style={s.formNote}>These preferences are now captured in the app. We’ll connect them to persistent accounts and the matching engine in the next technical step.</Text>
+      <TouchableOpacity style={[s.primaryButton,dataBusy&&s.buttonDisabled]} onPress={savePreferences} disabled={dataBusy}>{dataBusy?<ActivityIndicator color="#FFFFFF"/>:<Text style={s.primaryButtonText}>Save preferences</Text>}</TouchableOpacity>
+      <Text style={s.formNote}>These preferences are stored with your Stuff account. We’ll use them more deeply in product matching as the matching engine develops.</Text>
     </ScrollView>
     <BottomNav tab={tab} onChange={goTab}/>
   </SafeAreaView>;
@@ -312,9 +602,21 @@ export default function StuffApp() {
     <ScrollView contentContainerStyle={s.pageScreen}>
       <PageHeader eyebrow="Account" title="Your account." lead="Your details, shopping setup and personal preferences." />
 
+      {!user&&<View style={s.authCard}>
+        <Text style={s.authCardTitle}>Save your household.</Text>
+        <Text style={s.authCardCopy}>Create a Stuff account to keep your shopping list, household and preferences available across devices.</Text>
+        <TouchableOpacity style={s.primaryButton} onPress={()=>setAccountView('auth')}><Text style={s.primaryButtonText}>Sign in or create account</Text></TouchableOpacity>
+      </View>}
+      {!!user&&<View style={s.signedInCard}>
+        <Text style={s.signedInLabel}>SIGNED IN</Text>
+        <Text style={s.signedInEmail}>{user.email}</Text>
+        {dataBusy&&<Text style={s.signedInSync}>Syncing your Stuff account…</Text>}
+        {!dataBusy&&dataReady&&<Text style={s.signedInSync}>Household sync is on</Text>}
+      </View>}
+
       <Text style={s.sectionTitle}>Your details</Text>
       <View style={s.menuBlock}>
-        <MenuRow title="Personal details" sub="Name, email, mobile, suburb and postcode" onPress={()=>setAccountView('details')} />
+        <MenuRow title="Personal details" sub={user?'Name, email, mobile, suburb and postcode':'Sign in to save personal details'} onPress={()=>user?setAccountView('details'):setAccountView('auth')} />
       </View>
 
       <Text style={s.sectionTitle}>Connected shopping services</Text>
@@ -325,7 +627,7 @@ export default function StuffApp() {
       <Text style={s.sectionTitle}>Shopping preferences</Text>
       <View style={s.menuBlock}>
         <MenuRow title="Preferred supermarket" sub="Woolworths" right="" />
-        <MenuRow title="Product preferences" sub="Best match, specials, alternatives and usual brands" onPress={()=>setAccountView('preferences')} />
+        <MenuRow title="Product preferences" sub={user?'Best match, specials, alternatives and usual brands':'Sign in to save product preferences'} onPress={()=>user?setAccountView('preferences'):setAccountView('auth')} />
       </View>
 
       <Text style={s.sectionTitle}>Permissions</Text>
@@ -335,8 +637,10 @@ export default function StuffApp() {
 
       <Text style={s.sectionTitle}>Account access</Text>
       <View style={s.menuBlock}>
-        <MenuRow title="Sign out" onPress={signOut} />
-        <MenuRow title="Delete account" right="" onPress={deleteAccount} danger />
+        {user?<>
+          <MenuRow title="Sign out" onPress={signOut} />
+          <MenuRow title="Delete account" right="" onPress={deleteAccount} danger />
+        </>:<MenuRow title="Sign in or create account" onPress={()=>setAccountView('auth')} />}
       </View>
     </ScrollView>
     <BottomNav tab={tab} onChange={goTab}/>
@@ -375,9 +679,9 @@ export default function StuffApp() {
     <ScrollView contentContainerStyle={s.pageScreen}>
       <PageHeader eyebrow="More" title="Privacy" lead="A simple view of what Stuff uses and what stays with the retailer." onBack={()=>setMoreView('main')} backLabel="More" />
       <InfoBlock title="Voice">Your microphone is used only when you tap to talk. The recording is sent for processing so Stuff can turn it into grocery items.</InfoBlock>
-      <InfoBlock title="Stuff account">When login is added, Stuff will store the account details, household membership, preferences and shared shopping data needed to provide the service.</InfoBlock>
+      <InfoBlock title="Stuff account">If you create a Stuff account, Stuff stores your account details, household membership, preferences and shared shopping data needed to provide the service.</InfoBlock>
       <InfoBlock title="Woolworths">Stuff does not ask for or store your Woolworths password or payment details. Retailer login, saved payment methods and checkout stay with Woolworths.</InfoBlock>
-      <InfoBlock title="Household sharing">People you invite to the same household will be able to see and change the shared grocery list once household sync is connected.</InfoBlock>
+      <InfoBlock title="Household sharing">People who join the same household can see and change the shared grocery list. Household access is protected by signed-in Stuff accounts.</InfoBlock>
     </ScrollView>
     <BottomNav tab={tab} onChange={goTab}/>
   </SafeAreaView>;
@@ -437,6 +741,7 @@ export default function StuffApp() {
       </TouchableOpacity>
 
       {!!status&&<Text style={s.status}>{status}</Text>}
+      {!!user&&dataReady&&<Text style={s.syncLine}>✓ Shared household list synced</Text>}
 
       <View style={s.listBlock}>
         <View style={s.listTop}>
@@ -499,6 +804,7 @@ const s=StyleSheet.create({
   speakIcon:{fontSize:18,color:'#FFFFFF'},
   speakText:{color:'#FFFFFF',fontSize:19,fontWeight:'900'},
   status:{marginTop:8,color:'#55514A',fontSize:13,lineHeight:18,textAlign:'center'},
+  syncLine:{marginTop:6,color:'#32795C',fontSize:11,fontWeight:'800',textAlign:'center'},
   listBlock:{marginTop:6},
   listTop:{minHeight:46,flexDirection:'row',alignItems:'center',gap:10},
   listToggle:{flex:1,flexDirection:'row',alignItems:'center',gap:7,minHeight:42},
@@ -552,14 +858,25 @@ const s=StyleSheet.create({
   sharedNote:{marginTop:18,padding:16,borderRadius:16,backgroundColor:'#FFF8D9'},
   sharedNoteTitle:{color:'#171717',fontSize:14,fontWeight:'900'},
   sharedNoteCopy:{marginTop:5,color:'#5D574B',fontSize:12,lineHeight:17,fontWeight:'600'},
+  authCard:{marginTop:24,padding:18,borderRadius:20,backgroundColor:'#FFF8D9',borderWidth:1,borderColor:'#E5D89C'},
+  authCardTitle:{color:'#171717',fontSize:18,fontWeight:'900'},
+  authCardCopy:{marginTop:6,color:'#5D574B',fontSize:13,lineHeight:18,fontWeight:'600'},
+  signedInCard:{marginTop:24,padding:16,borderRadius:18,backgroundColor:'#FFFDF7',borderWidth:1,borderColor:'#D4CCBE'},
+  signedInLabel:{color:'#32795C',fontSize:10,fontWeight:'900',letterSpacing:.8},
+  signedInEmail:{marginTop:5,color:'#171717',fontSize:15,fontWeight:'900'},
+  signedInSync:{marginTop:5,color:'#69635A',fontSize:11,fontWeight:'700'},
   inlineBack:{marginTop:20,alignSelf:'flex-start',paddingVertical:4,paddingRight:10},
   inlineBackText:{color:'#171717',fontSize:14,fontWeight:'900'},
   formBlock:{marginTop:24},
   fieldWrap:{marginBottom:16},
   fieldLabel:{marginBottom:6,color:'#55514A',fontSize:12,fontWeight:'800'},
   field:{height:50,borderWidth:1,borderColor:'#BEB6A7',borderRadius:14,backgroundColor:'#FFFDF7',paddingHorizontal:14,color:'#171717',fontSize:16,fontWeight:'600'},
+  fieldDisabled:{backgroundColor:'#EDE8DC',color:'#777169'},
   primaryButton:{marginTop:20,minHeight:52,borderRadius:26,backgroundColor:'#171717',alignItems:'center',justifyContent:'center',paddingHorizontal:18},
   primaryButtonText:{color:'#FFFFFF',fontSize:15,fontWeight:'900'},
+  secondaryButton:{marginTop:10,minHeight:50,borderRadius:25,borderWidth:1,borderColor:'#171717',alignItems:'center',justifyContent:'center',paddingHorizontal:18},
+  secondaryButtonText:{color:'#171717',fontSize:14,fontWeight:'900'},
+  buttonDisabled:{opacity:.55},
   formNote:{marginTop:12,color:'#777169',fontSize:11,lineHeight:16,textAlign:'center',fontWeight:'600'},
   wooliesAccountCard:{marginTop:26,minHeight:76,borderRadius:18,backgroundColor:'#006B54',padding:15,flexDirection:'row',alignItems:'center'},
   wooliesAccountMark:{width:42,height:42,borderRadius:21,backgroundColor:'#8CC63F',alignItems:'center',justifyContent:'center',marginRight:12},
