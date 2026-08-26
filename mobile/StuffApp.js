@@ -129,10 +129,14 @@ export default function StuffApp() {
   }
 
   function goTab(next){setTab(next);setStatus('')}
-  function householdInvite(){Alert.alert('Invite someone','Next we’ll wire household invitations so another person can add to the same grocery list.')}
+  function comingSoon(label){Alert.alert(label,`${label} is ready in the screen structure. We’ll wire the underlying account data next.`)}
+  function householdInvite(){Alert.alert('Invite someone','Household invitations are the next shared-list feature to wire up.')}
   function howItWorks(){Alert.alert('How it works','1. Speak your grocery list.\n\n2. Check the items.\n\n3. Send them to Woolies.\n\n4. Review your Woolworths cart before checkout.')}
-  function privacy(){Alert.alert('Privacy','Your microphone is used only when you tap to talk. Your recording is sent for processing so we can turn what you said into grocery items.')}
+  function help(){Alert.alert('Help & support','Support and problem reporting will live here.')}
+  function privacy(){Alert.alert('Privacy','Stuff does not ask for or store your Woolworths password or payment details. Woolworths login and checkout stay with Woolworths. Voice recordings are sent for processing only when you tap to talk.')}
+  function terms(){Alert.alert('Terms','Terms of use and the retailer integration disclaimer will live here.')}
   function about(){Alert.alert('Stuff the Shopping','Say what you need. We build the list and help put it into your Woolworths cart.')}
+  function disconnectWoolies(){Alert.alert('Disconnect Woolworths','This will clear the Woolworths session from this device once we wire the final session-control step. Your Woolworths password is never stored by Stuff.')}
 
   if(mode==='woolies')return <SafeAreaView style={s.safe}><StatusBar barStyle="dark-content"/><View style={s.cartHead}><TouchableOpacity onPress={back} style={s.back}><Text style={s.backText}>‹ Shop</Text></TouchableOpacity><View style={{flex:1}}><Text style={s.cartTitle}>Woolies</Text><Text style={s.cartStatus} numberOfLines={1}>{status}</Text></View></View><WebView key={webKey} ref={webRef} source={{uri:cartUrl}} style={{flex:1}} onMessage={onMessage} onLoadEnd={onLoad} userAgent={UA} javaScriptEnabled domStorageEnabled sharedCookiesEnabled thirdPartyCookiesEnabled cacheEnabled incognito={false} setSupportMultipleWindows={false}/></SafeAreaView>;
 
@@ -142,21 +146,22 @@ export default function StuffApp() {
       <Text style={s.brand}>stuff{`\n`}the{`\n`}shopping<Text style={s.dot}>.</Text></Text>
       <View style={s.pageIntro}>
         <Text style={s.pageEyebrow}>Household</Text>
-        <Text style={s.pageTitle}>One list. Everyone at home.</Text>
-        <Text style={s.pageLead}>Keep the weekly groceries in one place, whoever remembers them.</Text>
+        <Text style={s.pageTitle}>Your household.</Text>
+        <Text style={s.pageLead}>One shared grocery list for the people at home.</Text>
       </View>
 
       <View style={s.householdHero}>
-        <Text style={s.heroKicker}>THIS WEEK’S LIST</Text>
+        <Text style={s.heroKicker}>SHARED SHOPPING LIST</Text>
         <Text style={s.heroNumber}>{count}</Text>
-        <Text style={s.heroCopy}>{count===1?'item':'items'} waiting</Text>
+        <Text style={s.heroCopy}>{count===1?'item':'items'} on the household list</Text>
         <TouchableOpacity style={s.heroButton} onPress={()=>goTab('home')}><Text style={s.heroButtonText}>View shopping list →</Text></TouchableOpacity>
       </View>
 
-      <Text style={s.sectionTitle}>People</Text>
+      <Text style={s.sectionTitle}>Household</Text>
       <View style={s.menuBlock}>
-        <MenuRow title="You" sub="Household owner" right="Owner" />
-        <MenuRow title="Invite someone" sub="Let someone else add to the same list" onPress={householdInvite} />
+        <MenuRow title="Household name" sub="Name this household" onPress={()=>comingSoon('Household name')} />
+        <MenuRow title="Members" sub="1 member" onPress={()=>comingSoon('Manage members')} />
+        <MenuRow title="Invite someone" sub="Let another person add to the same list" onPress={householdInvite} />
       </View>
     </ScrollView>
     <BottomNav tab={tab} onChange={goTab}/>
@@ -168,19 +173,39 @@ export default function StuffApp() {
       <Text style={s.brand}>stuff{`\n`}the{`\n`}shopping<Text style={s.dot}>.</Text></Text>
       <View style={s.pageIntro}>
         <Text style={s.pageEyebrow}>Account</Text>
-        <Text style={s.pageTitle}>Your shopping setup.</Text>
-        <Text style={s.pageLead}>Keep the essentials simple. We only need what helps get the groceries done.</Text>
+        <Text style={s.pageTitle}>Your account.</Text>
+        <Text style={s.pageLead}>Your details, shopping setup and personal preferences.</Text>
       </View>
 
-      <Text style={s.sectionTitle}>Shopping</Text>
+      <Text style={s.sectionTitle}>Your details</Text>
       <View style={s.menuBlock}>
-        <MenuRow title="Woolworths" sub="Sign in securely when you send your list" right="Ready" />
-        <MenuRow title="Microphone" sub="Used when you tap to talk" right="On" />
+        <MenuRow title="Personal details" sub="Name, email, mobile, suburb and postcode" onPress={()=>comingSoon('Personal details')} />
       </View>
 
-      <Text style={s.sectionTitle}>Profile</Text>
+      <Text style={s.sectionTitle}>Connected shopping services</Text>
       <View style={s.menuBlock}>
-        <MenuRow title="Your details" sub="Name and account details" onPress={()=>Alert.alert('Your details','Profile editing is the next account step we’ll wire up.')} />
+        <MenuRow title="Woolworths" sub="Retailer login stays with Woolworths on this device" right="Manage" onPress={disconnectWoolies} />
+      </View>
+      <View style={s.securityNote}>
+        <Text style={s.securityTitle}>Your Woolworths login stays private.</Text>
+        <Text style={s.securityCopy}>Stuff never stores your Woolworths password or payment details. Checkout remains with Woolworths.</Text>
+      </View>
+
+      <Text style={s.sectionTitle}>Shopping preferences</Text>
+      <View style={s.menuBlock}>
+        <MenuRow title="Preferred supermarket" sub="Woolworths" onPress={()=>comingSoon('Preferred supermarket')} />
+        <MenuRow title="Product preferences" sub="Usual brands, value choices and substitutions" onPress={()=>comingSoon('Product preferences')} />
+      </View>
+
+      <Text style={s.sectionTitle}>Permissions</Text>
+      <View style={s.menuBlock}>
+        <MenuRow title="Microphone" sub="Used only when you tap to talk" right="On" />
+      </View>
+
+      <Text style={s.sectionTitle}>Account access</Text>
+      <View style={s.menuBlock}>
+        <MenuRow title="Sign out" onPress={()=>comingSoon('Sign out')} />
+        <MenuRow title="Delete account" right="" onPress={()=>comingSoon('Delete account')} danger />
       </View>
     </ScrollView>
     <BottomNav tab={tab} onChange={goTab}/>
@@ -192,18 +217,15 @@ export default function StuffApp() {
       <Text style={s.brand}>stuff{`\n`}the{`\n`}shopping<Text style={s.dot}>.</Text></Text>
       <View style={s.pageIntro}>
         <Text style={s.pageEyebrow}>More</Text>
-        <Text style={s.pageTitle}>The useful bits.</Text>
+        <Text style={s.pageTitle}>Help, privacy & about.</Text>
       </View>
 
       <View style={[s.menuBlock,{marginTop:24}]}> 
         <MenuRow title="How it works" sub="From voice to Woolies cart" onPress={howItWorks} />
-        <MenuRow title="Privacy" sub="How voice input is used" onPress={privacy} />
+        <MenuRow title="Help & support" sub="Get help or report a problem" onPress={help} />
+        <MenuRow title="Privacy" sub="Voice, account and retailer data" onPress={privacy} />
+        <MenuRow title="Terms" sub="Terms of use and retailer disclaimer" onPress={terms} />
         <MenuRow title="About Stuff the Shopping" onPress={about} />
-      </View>
-
-      <Text style={s.sectionTitle}>Shopping list</Text>
-      <View style={s.menuBlock}>
-        <MenuRow title="Clear shopping list" sub={count?`${count} ${count===1?'item':'items'} currently on your list`:'Your list is already empty'} right="" onPress={count?clearAll:undefined} danger={count>0} />
       </View>
       <Text style={s.version}>Stuff the Shopping · MVP</Text>
     </ScrollView>
@@ -334,6 +356,9 @@ const s=StyleSheet.create({
   menuSub:{marginTop:4,color:'#69635A',fontSize:12,lineHeight:16,fontWeight:'600'},
   menuRight:{color:'#69635A',fontSize:14,fontWeight:'800'},
   danger:{color:'#C83D24'},
+  securityNote:{marginTop:12,padding:14,borderRadius:14,backgroundColor:'#FFF8D9'},
+  securityTitle:{color:'#171717',fontSize:13,fontWeight:'900'},
+  securityCopy:{marginTop:5,color:'#5D574B',fontSize:12,lineHeight:17,fontWeight:'600'},
   version:{marginTop:28,color:'#8B8479',fontSize:11,textAlign:'center',fontWeight:'700'},
   bottomNav:{minHeight:82,backgroundColor:'#000000',paddingHorizontal:12,paddingTop:10,paddingBottom:10,flexDirection:'row',alignItems:'center',justifyContent:'space-around'},
   navItem:{flex:1,alignItems:'center',justifyContent:'center'},
