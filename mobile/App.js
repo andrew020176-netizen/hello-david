@@ -1,0 +1,401 @@
+import React, { useMemo, useRef, useState } from 'react';
+import {
+  SafeAreaView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { WebView } from 'react-native-webview';
+
+const DAVID_URL = 'https://hellodavid.com.au/?app=1';
+const WOOLIES_URL = 'https://www.woolworths.com.au/';
+
+function buildWooliesScript(items) {
+  const payload = JSON.stringify(Array.isArray(items) ? items.slice(0, 60) : []);
+
+  return `
+  (async () => {
+    const items = ${payload};
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+    const post = (type, message, extra = {}) => {
+      try {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type, message, ...extra }));
+      } catch (_) {}
+    };
+
+    function overlay() {
+      let box = document.getElementById('hello-david-mobile-progress');
+      if (box) return box;
+      box = document.createElement('div');
+      box.id = 'hello-david-mobile-progress';
+      Object.assign(box.style, {
+        position: 'fixed', top: '16px', left: '16px', right: '16px', zIndex: '2147483647',
+        padding: '14px 16px', borderRadius: '14px', background: '#fff', color: '#171717',
+        font: '14px/1.45 Arial, sans-serif', boxShadow: '0 10px 35px rgba(0,0,0,.22)',
+        border: '1px solid #ddd'
+      });
+      box.innerHTML = '<strong style="font-size:16px">Hello David</strong><div id="hello-david-mobile-progress-text" style="margin-top:5px">Starting your Woolies shop…</div>';
+      document.body.appendChild(box);
+      return box;
+    }
+
+    function setProgress(text) {
+      overlay();
+      const el = document.getElementById('hello-david-mobile-progress-text');
+      if (el) el.textContent = text;
+      post('WOOLIES_STATUS', text);
+    }
+
+    function cleanQuery(name) {
+      let query = String(name || '')
+        .replace(/\\b(whatever(?:'s| is)? on special|on special|cheapest|best value|value option)\\b/gi, '')
+        .replace(/\\s+/g, ' ')
+        .trim();
+
+      const aliases = [
+        [/\\bweet\\s*-?\\s*a?bix\\b/gi, 'Weet-Bix'],
+        [/\\bweetbix\\b/gi, 'Weet-Bix'],
+        [/\\bweet bix\\b/gi, 'Weet-Bix']
+      ];
+      for (const [pattern, replacement] of aliases) query = query.replace(pattern, replacement);
+      return query;
+    }
+
+    function words(value) {
+      const stop = new Set(['the','a','an','of','and','for','with','on','pack','packet','bag','box','carton']);
+      return String(value || '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w && !stop.has(w));
+    }
+
+    function productText(product) {
+      return \`${'${'}product.DisplayName || product.Name || ''} ${'${'}product.Brand || ''} ${'${'}product.PackageSize || ''}\`.toLowerCase();
+    }
+
+    function rankProduct(item, product) {
+      const query = cleanQuery(item.name);
+      const wantedWords = words(query);
+      const text = productText(product);
+      const matchedWords = wantedWords.filter(w => text.includes(w)).length;
+      let score = 0;
+
+      for (const word of wantedWords) if (text.includes(word)) score += 14;
+      if (query && text.includes(query.toLowerCase())) score += 40;
+
+      const unit = String(item.unit || '').toLowerCase();
+      const packSize = unit.match(/(?:pack|packet|box|bag)\\s+of\\s+(\\d+)/i)?.[1];
+      if (packSize && new RegExp(\`(?:\\b${'${'}packSize}\\s*(?:pack|pk|x)\\b|\\bpack\\s*of\\s*${'${'}packSize}\\b)\`, 'i').test(text)) score += 40;
+
+      const wantsSpecial = /special|sale/i.test(item.name || '') || /special|sale/i.test(unit);
+      if (wantsSpecial) score += product.IsOnSpecial ? 30 : -8;
+      if (product.IsAvailable === false || product.IsInStock === false) score -= 200;
+
+      return { product, score, matchedWords, wantedWords };
+    }
+
+    function confidentMatch(ranked) {
+      if (!ranked) return false;
+      const count = ranked.wantedWords.length;
+      if (!count) return false;
+      const needed = count === 1 ? 1 : Math.min(2, count);
+      return ranked.matchedWords >= needed && ranked.score >= 20;
+    }
+
+    async function searchProducts(item) {
+      const query = cleanQuery(item.name);
+      const response = await fetch('/apis/ui/Search/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json, text/plain, */*' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          Filters: [],
+          IsSpecial: false,
+          Location: \`/shop/search/products?searchTerm=${'${'}encodeURIComponent(query)}\`,
+          PageNumber: 1,
+          PageSize: 12,
+          SearchTerm: query,
+          SortType: 'TraderRelevance',
+          IsHideEverydayMarketProducts: false,
+          IsRegisteredRewardCardPromotion: null,
+          ExcludeSearchTypes: ['UntraceableVendors'],
+          GpBoost: 0,
+          GroupEdmVariants: false,
+          EnableAdReRanking: false
+        })
+      });
+      if (!response.ok) throw new Error(\`Search failed (${'${'}response.status})\`);
+      const data = await response.json();
+      const products = [];
+      for (const group of data?.Products || []) {
+        for (const product of group?.Products || []) products.push(product);
+      }
+      return products;
+    }
+
+    function safeQuantity(item, product) {
+      let wanted = Number(item.qty ?? item.quantity ?? 1);
+      if (!Number.isFinite(wanted) || wanted <= 0) wanted = 1;
+      const unit = String(item.unit || '').toLowerCase();
+      const text = productText(product);
+
+      if (wanted > 12) return 1;
+      if (/^(pack|packet|box|bag|carton|bottle|tin|can|loaf|jar)/.test(unit)) {
+        return Math.max(1, Math.min(6, Math.round(wanted)));
+      }
+      if (wanted > 1 && /(roll|muffin|fillet|piece|item)s?/.test(unit)) {
+        const exactPack = new RegExp(\`(?:\\b${'${'}wanted}\\s*(?:pack|pk|x)\\b|\\bpack\\s*of\\s*${'${'}wanted}\\b)\`, 'i');
+        if (exactPack.test(text)) return 1;
+        return Math.max(1, Math.min(12, Math.round(wanted)));
+      }
+      if (wanted > 6) return 1;
+      return Math.max(1, Math.min(6, Math.round(wanted)));
+    }
+
+    try {
+      if (!Array.isArray(items) || !items.length) {
+        setProgress('There is nothing to add.');
+        post('WOOLIES_DONE', 'Nothing to add.', { success: false });
+        return true;
+      }
+
+      const selected = [];
+      const unmatched = [];
+      const usedStockcodes = new Map();
+
+      for (let index = 0; index < items.length; index++) {
+        const item = items[index];
+        setProgress(\`Matching ${'${'}index + 1} of ${'${'}items.length}: ${'${'}item.name}\`);
+        const products = await searchProducts(item);
+        const ranked = products
+          .map(product => rankProduct(item, product))
+          .sort((a, b) => b.score - a.score || Number(a.product.Price || 9999) - Number(b.product.Price || 9999));
+
+        const best = ranked[0];
+        if (!confidentMatch(best) || !best.product.Stockcode) {
+          unmatched.push(item.name);
+          await sleep(150);
+          continue;
+        }
+
+        const stockcode = String(best.product.Stockcode);
+        if (usedStockcodes.has(stockcode)) {
+          unmatched.push(item.name);
+          await sleep(150);
+          continue;
+        }
+
+        usedStockcodes.set(stockcode, item.name);
+        selected.push({ item, product: best.product, quantity: safeQuantity(item, best.product) });
+        await sleep(150);
+      }
+
+      let added = 0;
+      let failed = 0;
+      for (let i = 0; i < selected.length; i += 10) {
+        const batchRows = selected.slice(i, i + 10);
+        setProgress(\`Adding ${'${'}Math.min(i + 10, selected.length)} of ${'${'}selected.length} matched products…\`);
+        const body = {
+          items: batchRows.map(row => ({
+            stockcode: Number(row.product.Stockcode),
+            quantity: Math.max(1, Math.min(12, Number(row.quantity) || 1)),
+            source: 'SearchResults',
+            diagnostics: '0',
+            searchTerm: cleanQuery(row.item.name),
+            evaluateRewardPoints: false,
+            offerId: null,
+            profileId: null,
+            priceLevel: null
+          }))
+        };
+
+        const response = await fetch('/api/v3/ui/trolley/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': '*/*' },
+          credentials: 'same-origin',
+          body: JSON.stringify(body)
+        });
+
+        if (response.ok) added += batchRows.length;
+        else failed += batchRows.length;
+        await sleep(250);
+      }
+
+      const parts = [\`${'${'}added} products added.\`];
+      if (unmatched.length) parts.push(\`Skipped because David was not confident: ${'${'}unmatched.join(', ')}.\`);
+      if (failed) parts.push(\`${'${'}failed} matched products failed to add.\`);
+      parts.push('Review your cart before checkout.');
+      const summary = parts.join(' ');
+      setProgress(summary);
+      post('WOOLIES_DONE', summary, { success: failed === 0, added, failed, unmatched });
+
+      if (!failed) {
+        await sleep(1000);
+        location.href = '/shop/cart';
+      }
+    } catch (error) {
+      const message = \`Could not finish the Woolies shop: ${'${'}error?.message || 'unknown error'}.\`;
+      console.error('Hello David mobile Woolies automation failed', error);
+      setProgress(message);
+      post('WOOLIES_DONE', message, { success: false });
+    }
+    return true;
+  })();
+  true;
+  `;
+}
+
+export default function App() {
+  const webRef = useRef(null);
+  const pendingItemsRef = useRef(null);
+  const injectedForRunRef = useRef(false);
+  const [url, setUrl] = useState(DAVID_URL);
+  const [status, setStatus] = useState('David');
+
+  const isWoolies = useMemo(() => url.includes('woolworths.com.au'), [url]);
+
+  function goDavid() {
+    pendingItemsRef.current = null;
+    injectedForRunRef.current = false;
+    setStatus('David');
+    setUrl(DAVID_URL + '&t=' + Date.now());
+  }
+
+  function goWoolies() {
+    pendingItemsRef.current = null;
+    injectedForRunRef.current = false;
+    setStatus('Woolies');
+    setUrl(WOOLIES_URL + '?helloDavid=' + Date.now());
+  }
+
+  function handleMessage(event) {
+    let message;
+    try {
+      message = JSON.parse(event.nativeEvent.data);
+    } catch (_) {
+      return;
+    }
+
+    if (message?.type === 'HELLO_DAVID_SEND_TO_WOOLIES') {
+      const items = Array.isArray(message.items) ? message.items : [];
+      if (!items.length) return;
+      pendingItemsRef.current = items;
+      injectedForRunRef.current = false;
+      setStatus('Opening Woolies…');
+      setUrl(WOOLIES_URL + '?helloDavid=' + Date.now());
+      return;
+    }
+
+    if (message?.type === 'WOOLIES_STATUS') {
+      setStatus(message.message || 'Building Woolies cart…');
+      return;
+    }
+
+    if (message?.type === 'WOOLIES_DONE') {
+      pendingItemsRef.current = null;
+      injectedForRunRef.current = true;
+      setStatus(message.message || 'Cart ready to review');
+    }
+  }
+
+  function handleLoadEnd(event) {
+    const loadedUrl = event.nativeEvent.url || '';
+    if (!loadedUrl.includes('woolworths.com.au')) return;
+    if (!pendingItemsRef.current || injectedForRunRef.current) return;
+
+    injectedForRunRef.current = true;
+    setStatus('Matching your Woolies products…');
+    webRef.current?.injectJavaScript(buildWooliesScript(pendingItemsRef.current));
+  }
+
+  return (
+    <SafeAreaView style={styles.safe}>
+      <StatusBar barStyle="dark-content" />
+      <View style={styles.header}>
+        <View style={styles.brandWrap}>
+          <Text style={styles.brand}>HELLO DAVID</Text>
+          <Text style={styles.status} numberOfLines={1}>{status}</Text>
+        </View>
+        <View style={styles.nav}>
+          <TouchableOpacity style={[styles.navButton, !isWoolies && styles.navActive]} onPress={goDavid}>
+            <Text style={styles.navText}>David</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.navButton, isWoolies && styles.navActive]} onPress={goWoolies}>
+            <Text style={styles.navText}>Woolies</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <WebView
+        ref={webRef}
+        source={{ uri: url }}
+        style={styles.webview}
+        onMessage={handleMessage}
+        onLoadEnd={handleLoadEnd}
+        javaScriptEnabled
+        domStorageEnabled
+        sharedCookiesEnabled
+        thirdPartyCookiesEnabled
+        incognito={false}
+        allowsInlineMediaPlayback
+        mediaPlaybackRequiresUserAction={false}
+        setSupportMultipleWindows={false}
+      />
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: '#FDFFF7',
+  },
+  header: {
+    minHeight: 64,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: '#FDFFF7',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#d9d9d4',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  brandWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  brand: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.7,
+    color: '#50514F',
+  },
+  status: {
+    fontSize: 11,
+    marginTop: 2,
+    color: '#737470',
+  },
+  nav: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  navButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#efefe9',
+  },
+  navActive: {
+    backgroundColor: '#B4ADEA',
+  },
+  navText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#292a28',
+  },
+  webview: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+});
