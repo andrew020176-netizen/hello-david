@@ -1,0 +1,42 @@
+{
+  "name": "Stuff retailer regression shop v1",
+  "purpose": "One repeatable grocery shop for voice parsing, product matching, pricing, retailer handoff and restricted-item checks.",
+  "spoken_script": "I need one three litre full cream milk, a one kilo box of Weet-Bix, a 250 gram punnet of baby tomatoes, one 400 gram tin of diced tomatoes, 750 grams of cheddar cheese, one loaf of white bread, a pack of six white rolls, one pack of pork sausages, one kilo of chicken breast, one kilo of bananas, two avocados, a dozen eggs, one kilo of Greek yoghurt, the cheapest suitable twelve pack of toilet paper, two litres of laundry liquid preferably on special, one 24 can pack of Coca-Cola Zero, one packet of Arnott's BBQ Shapes, four salmon fillets, one litre of olive oil, a bag of apples, a pack of four chocolate muffins, and a bottle of wine.",
+  "expected_list": [
+    {"name":"full cream milk","quantity":1,"unit":"3 L","check":"size preserved"},
+    {"name":"Weet-Bix","quantity":1,"unit":"1 kg","check":"brand/product preserved"},
+    {"name":"baby tomatoes","quantity":1,"unit":"250 g","check":"fresh product, not canned"},
+    {"name":"diced tomatoes","quantity":1,"unit":"400 g tin","check":"canned product, not fresh"},
+    {"name":"cheddar cheese","quantity":1,"unit":"750 g","check":"weight preserved"},
+    {"name":"white bread","quantity":1,"unit":"loaf","check":"bread, not bread mix"},
+    {"name":"white rolls","quantity":1,"unit":"pack of 6","check":"pack size, not six packs"},
+    {"name":"pork sausages","quantity":1,"unit":"pack","check":"correct meat/product"},
+    {"name":"chicken breast","quantity":1,"unit":"1 kg","check":"weight close to requested"},
+    {"name":"bananas","quantity":1,"unit":"1 kg","check":"fresh produce"},
+    {"name":"avocados","quantity":2,"unit":"avocados","check":"quantity preserved"},
+    {"name":"eggs","quantity":1,"unit":"12 pack","check":"pack size preserved"},
+    {"name":"Greek yoghurt","quantity":1,"unit":"1 kg","check":"variant and size"},
+    {"name":"toilet paper cheapest suitable","quantity":1,"unit":"12 pack","check":"cheapest-suitable behaviour"},
+    {"name":"laundry liquid on special","quantity":1,"unit":"2 L","check":"special preference and size"},
+    {"name":"Coca-Cola Zero","quantity":1,"unit":"24 can pack","check":"brand, zero variant, pack size"},
+    {"name":"Arnott's BBQ Shapes","quantity":1,"unit":"packet","check":"brand and flavour"},
+    {"name":"salmon fillets","quantity":4,"unit":"fillets","check":"quantity preserved"},
+    {"name":"olive oil","quantity":1,"unit":"1 L","check":"size preserved"},
+    {"name":"apples","quantity":1,"unit":"bag","check":"bag not loose-unit explosion"},
+    {"name":"chocolate muffins","quantity":1,"unit":"pack of 4","check":"pack size preserved"},
+    {"name":"wine","quantity":1,"unit":"bottle","check":"must remain on Stuff list but must not be automatically matched or added to retailer cart"}
+  ],
+  "retailer_runs": [
+    {"retailer":"Woolworths","match_mode":"best","prefer_specials":true,"allow_alternatives":true},
+    {"retailer":"Woolworths","match_mode":"cheapest","prefer_specials":false,"allow_alternatives":true},
+    {"retailer":"Coles","match_mode":"best","prefer_specials":true,"allow_alternatives":true},
+    {"retailer":"Coles","match_mode":"cheapest","prefer_specials":false,"allow_alternatives":true}
+  ],
+  "pass_rules": {
+    "voice": "No invented groceries; quantities and pack sizes remain materially correct.",
+    "matching": "Fresh/canned distinctions, brand variants and requested sizes must not be replaced by obviously wrong products.",
+    "restricted": "Wine is never automatically searched, matched or added to a retailer trolley/cart.",
+    "checkout": "Stuff never completes checkout or payment.",
+    "failure": "Retailer login, challenge, load failure or website change must leave the user with a clear manual fallback rather than a stuck spinner."
+  }
+}
