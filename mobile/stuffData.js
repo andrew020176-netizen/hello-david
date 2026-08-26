@@ -1,3 +1,4 @@
+import { Share } from 'react-native';
 import { supabase } from './supabase';
 
 function throwIfError(result) {
@@ -157,7 +158,18 @@ export async function createStuffInvite(householdId, userId, name, contact) {
     invitee_name: String(name || '').trim() || null,
     contact: String(contact || '').trim(),
   }).select('*').single();
-  return throwIfError(result);
+  const invite = throwIfError(result);
+
+  if (invite?.invite_code) {
+    const link = `stuffshopping://join?code=${encodeURIComponent(invite.invite_code)}`;
+    try {
+      await Share.share({
+        message: `Join my Stuff the Shopping household.\n\nInvite code: ${invite.invite_code}\n\nOpen the invite: ${link}`,
+      });
+    } catch (_) {}
+  }
+
+  return invite;
 }
 
 export async function acceptStuffInvite(inviteCode) {
