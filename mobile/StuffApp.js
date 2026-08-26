@@ -882,10 +882,10 @@ export default function StuffApp() {
       <View style={s.menuBlock}>
         <ToggleRow title="Prefer specials" sub="Choose a special when it’s still a good match" value={preferences.preferSpecials} onValueChange={v=>setPreferences(p=>({...p,preferSpecials:v}))} />
         <ToggleRow title="Allow close alternatives" sub="Use a sensible substitute when the exact item isn’t available" value={preferences.allowAlternatives} onValueChange={v=>setPreferences(p=>({...p,allowAlternatives:v}))} />
-        <ToggleRow title="Remember usual brands" sub="Later, learn from the products you actually choose" value={preferences.rememberBrands} onValueChange={v=>setPreferences(p=>({...p,rememberBrands:v}))} />
+        <ToggleRow title="Remember usual brands" sub="Learn repeated household choices and favour them next time" value={preferences.rememberBrands} onValueChange={v=>setPreferences(p=>({...p,rememberBrands:v}))} />
       </View>
       <TouchableOpacity style={[s.primaryButton,dataBusy&&s.buttonDisabled]} onPress={savePreferences} disabled={dataBusy}>{dataBusy?<ActivityIndicator color="#FFFFFF"/>:<Text style={s.primaryButtonText}>Save preferences</Text>}</TouchableOpacity>
-      <Text style={s.formNote}>Best match, cheapest suitable, specials and alternative settings now change how Stuff chooses Woolworths products. Usual-brand learning comes next.</Text>
+      <Text style={s.formNote}>Best match, cheapest suitable, specials and alternative settings change how Stuff chooses products. Learned usuals are used when Remember usual brands is on.</Text>
     </ScrollView>
     <BottomNav tab={tab} onChange={goTab}/>
   </SafeAreaView>;
