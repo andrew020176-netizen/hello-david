@@ -33,6 +33,10 @@
     }).filter(item => item.name);
   }
 
+  function inNativeApp() {
+    return Boolean(window.ReactNativeWebView?.postMessage);
+  }
+
   function helperReady() {
     return document.documentElement.dataset.helloDavidWooliesHelper === 'ready';
   }
@@ -58,18 +62,29 @@
       return;
     }
 
-    if (!helperReady()) {
-      note.textContent = 'The desktop Woolies helper is not installed in this browser yet.';
-      return;
-    }
-
     btn.disabled = true;
     btn.textContent = 'Building Woolies cart…';
     note.textContent = 'Opening Woolies and matching your products. No copying or pasting.';
 
-    document.documentElement.dataset.helloDavidShop = JSON.stringify(items);
-    window.dispatchEvent(new Event('hello-david-send-to-woolies'));
+    // Preferred path: Hello David native mobile app.
+    if (inNativeApp()) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'HELLO_DAVID_SEND_TO_WOOLIES',
+        items
+      }));
+      setTimeout(resetButton, 6000);
+      return;
+    }
 
-    setTimeout(resetButton, 6000);
+    // Desktop prototype fallback while the mobile shell is being tested.
+    if (helperReady()) {
+      document.documentElement.dataset.helloDavidShop = JSON.stringify(items);
+      window.dispatchEvent(new Event('hello-david-send-to-woolies'));
+      setTimeout(resetButton, 6000);
+      return;
+    }
+
+    note.textContent = 'Open Hello David in the mobile app to send this shop straight to Woolies.';
+    resetButton();
   });
 })();
