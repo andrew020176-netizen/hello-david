@@ -18,8 +18,9 @@ Native Expo MVP for Stuff the Shopping.
    - **Allow close alternatives** controls how wide the acceptable match set can be.
    - **Remember usual brands** learns repeated household product choices after successful retailer handoff. After the same product has been chosen more than once for the same request, Stuff favours it on future shops. Explicit requests such as "cheapest" or "on special" override the learned usual.
 8. Account includes **Your usuals**, where learned household products can be reviewed, forgotten individually or reset completely.
-9. Leaves final product review, checkout and payment entirely with the retailer.
-10. Uses the Stuff app icon and orange launch screen configured for release builds.
+9. Development builds include **Load regression test shop** under More, which loads the fixed 22-item Woolworths/Coles test list in one tap.
+10. Leaves final product review, checkout and payment entirely with the retailer.
+11. Uses the Stuff app icon, adaptive Android icon and orange launch screen configured for release builds.
 
 ## Fast phone test with Expo Go
 
@@ -34,6 +35,10 @@ npx expo start --lan --clear
 ```
 
 Then scan the new QR code with Expo Go.
+
+## Release builds
+
+`eas.json` includes internal preview and production build profiles. Expo/EAS account setup and Apple/Google signing credentials are still completed interactively when the first store build is created.
 
 ## Safety rails
 
