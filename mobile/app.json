@@ -6,8 +6,10 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
     "splash": {
-      "backgroundColor": "#F7F1E3",
+      "image": "./assets/icon.png",
+      "backgroundColor": "#F4512C",
       "resizeMode": "contain"
     },
     "ios": {
@@ -21,6 +23,11 @@
     "android": {
       "package": "au.com.stufftheshopping.app",
       "versionCode": 1,
+      "icon": "./assets/icon.png",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#F4512C"
+      },
       "permissions": ["RECORD_AUDIO"]
     }
   }
