@@ -719,12 +719,12 @@ export default function StuffApp() {
   if(tab==='more'&&moreView==='how')return <SafeAreaView style={s.safe}>
     <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
     <ScrollView contentContainerStyle={s.pageScreen}>
-      <PageHeader eyebrow="More" title="How it works" lead="From a spoken list to a Woolworths cart, without making grocery shopping another admin job." onBack={()=>setMoreView('main')} backLabel="More" />
+      <PageHeader eyebrow="More" title="How it works" lead="From a spoken list to your chosen supermarket, without making grocery shopping another admin job." onBack={()=>setMoreView('main')} backLabel="More" />
       <View style={s.stepsBlock}>
         <View style={s.stepCard}><Text style={s.stepNumber}>1</Text><View style={{flex:1}}><Text style={s.stepTitle}>Say what you need</Text><Text style={s.stepCopy}>Tap to talk and say the groceries naturally. Add more later if you remember something else.</Text></View></View>
         <View style={s.stepCard}><Text style={s.stepNumber}>2</Text><View style={{flex:1}}><Text style={s.stepTitle}>Check the list</Text><Text style={s.stepCopy}>Stuff turns what you said into a simple list you can edit, remove from or share.</Text></View></View>
-        <View style={s.stepCard}><Text style={s.stepNumber}>3</Text><View style={{flex:1}}><Text style={s.stepTitle}>Send to Woolies</Text><Text style={s.stepCopy}>Stuff finds confident product matches and adds them to your Woolworths cart.</Text></View></View>
-        <View style={s.stepCard}><Text style={s.stepNumber}>4</Text><View style={{flex:1}}><Text style={s.stepTitle}>You review and checkout</Text><Text style={s.stepCopy}>Check every product, price and quantity inside Woolworths before completing your order.</Text></View></View>
+        <View style={s.stepCard}><Text style={s.stepNumber}>3</Text><View style={{flex:1}}><Text style={s.stepTitle}>Choose where to shop</Text><Text style={s.stepCopy}>Stuff matches the list for your preferred supermarket. Woolworths can be sent into the cart; Coles currently shows matched products and an estimated basket.</Text></View></View>
+        <View style={s.stepCard}><Text style={s.stepNumber}>4</Text><View style={{flex:1}}><Text style={s.stepTitle}>You review and checkout</Text><Text style={s.stepCopy}>Check every product, price and quantity with the retailer before completing your order.</Text></View></View>
       </View>
     </ScrollView>
     <BottomNav tab={tab} onChange={goTab}/>
@@ -737,7 +737,7 @@ export default function StuffApp() {
       <View style={s.menuBlockWithTop}>
         <MenuRow title="Report a problem" sub="Tell us what went wrong" onPress={reportProblem} />
         <MenuRow title="Shopping list help" sub="Voice, editing and shared lists" onPress={()=>setMoreView('how')} />
-        <MenuRow title="Woolworths help" sub="Login, cart and checkout remain with Woolworths" onPress={()=>setMoreView('privacy')} />
+        <MenuRow title="Retailer help" sub="Retailer login, cart and checkout stay with the retailer" onPress={()=>setMoreView('privacy')} />
       </View>
       <InfoBlock title="Before release">We’ll add a real support channel and diagnostic information here. The app should never ask you to send a Woolworths password or payment details to Stuff support.</InfoBlock>
     </ScrollView>
@@ -750,7 +750,7 @@ export default function StuffApp() {
       <PageHeader eyebrow="More" title="Privacy" lead="A simple view of what Stuff uses and what stays with the retailer." onBack={()=>setMoreView('main')} backLabel="More" />
       <InfoBlock title="Voice">Your microphone is used only when you tap to talk. The recording is sent for processing so Stuff can turn it into grocery items.</InfoBlock>
       <InfoBlock title="Stuff account">If you create a Stuff account, Stuff stores your account details, household membership, preferences and shared shopping data needed to provide the service.</InfoBlock>
-      <InfoBlock title="Woolworths">Stuff does not ask for or store your Woolworths password or payment details. Retailer login, saved payment methods and checkout stay with Woolworths.</InfoBlock>
+      <InfoBlock title="Retailer accounts">Stuff does not ask for or store your Woolworths or Coles password or payment details. Retailer login, saved payment methods and checkout stay with the retailer.</InfoBlock>
       <InfoBlock title="Household sharing">People who join the same household can see and change the shared grocery list. Household access is protected by signed-in Stuff accounts.</InfoBlock>
     </ScrollView>
     <BottomNav tab={tab} onChange={goTab}/>
@@ -761,9 +761,9 @@ export default function StuffApp() {
     <ScrollView contentContainerStyle={s.pageScreen}>
       <PageHeader eyebrow="More" title="Terms" lead="The important boundaries of the current service." onBack={()=>setMoreView('main')} backLabel="More" />
       <InfoBlock title="You stay in control">Stuff helps prepare a shopping list and may add suggested products to a retailer cart. You must review the retailer cart before ordering.</InfoBlock>
-      <InfoBlock title="Prices and availability">Retailer prices, specials, availability, substitutions and delivery options can change. Woolworths remains the source of truth for the final order.</InfoBlock>
-      <InfoBlock title="Checkout and payment">Stuff does not submit checkout or payment. Ordering and payment are completed with Woolworths.</InfoBlock>
-      <InfoBlock title="Current integration">This MVP uses Woolworths website behaviour and is not an official Woolworths integration. Website behaviour may change before a retailer-approved integration is available.</InfoBlock>
+      <InfoBlock title="Prices and availability">Retailer prices, specials, availability, substitutions and delivery options can change. Your chosen retailer remains the source of truth for the final order.</InfoBlock>
+      <InfoBlock title="Checkout and payment">Stuff does not submit checkout or payment. Ordering and payment are completed with the retailer.</InfoBlock>
+      <InfoBlock title="Current integration">This MVP uses current Woolworths and Coles website behaviour and is not an official retailer integration. Website behaviour may change before retailer-approved integrations are available.</InfoBlock>
     </ScrollView>
     <BottomNav tab={tab} onChange={goTab}/>
   </SafeAreaView>;
@@ -773,7 +773,7 @@ export default function StuffApp() {
     <ScrollView contentContainerStyle={s.pageScreen}>
       <PageHeader eyebrow="More" title="About Stuff the Shopping" lead="Less grocery admin. More getting it done." onBack={()=>setMoreView('main')} backLabel="More" />
       <View style={s.aboutHero}><Text style={s.aboutBig}>stuff{`\n`}the{`\n`}shopping<Text style={s.dot}>.</Text></Text><Text style={s.aboutTag}>We’ll do the groceries.</Text></View>
-      <InfoBlock title="What we’re building">Say what you need, keep one shared household list and move it into a retailer cart without manually searching for every product.</InfoBlock>
+      <InfoBlock title="What we’re building">Say what you need, keep one shared household list and move it towards a retailer order without manually searching for every product.</InfoBlock>
       <Text style={s.version}>Stuff the Shopping · MVP</Text>
     </ScrollView>
     <BottomNav tab={tab} onChange={goTab}/>
@@ -784,7 +784,7 @@ export default function StuffApp() {
     <ScrollView contentContainerStyle={s.pageScreen}>
       <PageHeader eyebrow="More" title="Help, privacy & about." />
       <View style={s.menuBlockWithTop}>
-        <MenuRow title="How it works" sub="From voice to Woolies cart" onPress={()=>setMoreView('how')} />
+        <MenuRow title="How it works" sub="From voice to your chosen supermarket" onPress={()=>setMoreView('how')} />
         <MenuRow title="Help & support" sub="Get help or report a problem" onPress={()=>setMoreView('help')} />
         <MenuRow title="Privacy" sub="Voice, account and retailer data" onPress={()=>setMoreView('privacy')} />
         <MenuRow title="Terms" sub="Terms of use and retailer disclaimer" onPress={()=>setMoreView('terms')} />
@@ -844,20 +844,24 @@ export default function StuffApp() {
         </View>}
       </View>
 
-      <TouchableOpacity style={[s.send,!canSend&&s.sendOff]} onPress={send} disabled={!canSend}>
-        <View style={s.wooliesMark}><Text style={s.wooliesMarkText}>W</Text></View>
-        <View style={s.sendCopy}>
-          <Text style={s.sendText}>Send to Woolies</Text>
-          <Text style={s.sendSub}>Add to your Woolworths cart</Text>
-        </View>
-        <Text style={s.sendArrow}>›</Text>
-      </TouchableOpacity>
-      <Text style={s.note}>We’ll build your Woolies cart. You review it before checkout.</Text>
-      <TouchableOpacity style={[s.colesButton,!canSend&&s.sendOff]} onPress={compareColes} disabled={!canSend}>
-        <View style={s.colesMark}><Text style={s.colesMarkText}>C</Text></View>
-        <View style={s.sendCopy}><Text style={s.colesButtonText}>Check at Coles</Text><Text style={s.colesButtonSub}>Match the list and estimate the basket</Text></View>
-        <Text style={s.sendArrow}>›</Text>
-      </TouchableOpacity>
+      {preferences.preferredSupermarket==='coles'?<>
+        <TouchableOpacity style={[s.colesButton,!canSend&&s.sendOff]} onPress={compareColes} disabled={!canSend}>
+          <View style={s.colesMark}><Text style={s.colesMarkText}>C</Text></View>
+          <View style={s.sendCopy}><Text style={s.colesButtonText}>Check at Coles</Text><Text style={s.colesButtonSub}>Match the list and estimate the basket</Text></View>
+          <Text style={s.sendArrow}>›</Text>
+        </TouchableOpacity>
+        <Text style={s.note}>We’ll match your list at Coles. You review everything with Coles before ordering.</Text>
+      </>:<>
+        <TouchableOpacity style={[s.send,!canSend&&s.sendOff]} onPress={send} disabled={!canSend}>
+          <View style={s.wooliesMark}><Text style={s.wooliesMarkText}>W</Text></View>
+          <View style={s.sendCopy}>
+            <Text style={s.sendText}>Send to Woolies</Text>
+            <Text style={s.sendSub}>Add to your Woolworths cart</Text>
+          </View>
+          <Text style={s.sendArrow}>›</Text>
+        </TouchableOpacity>
+        <Text style={s.note}>We’ll build your Woolies cart. You review it before checkout.</Text>
+      </>}
     </ScrollView>
 
     <BottomNav tab={tab} onChange={goTab}/>
