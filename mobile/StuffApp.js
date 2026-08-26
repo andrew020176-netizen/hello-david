@@ -16,6 +16,28 @@ const detail = item => {
   return `${q} ${u}`;
 };
 
+function mergeItems(current, actions) {
+  let next = [...current];
+  for (const r of actions?.remove || []) {
+    const n = norm(r);
+    next = next.filter(x => norm(x.name) !== n);
+  }
+  for (const a of actions?.add || []) {
+    const name = String(a?.name || '').trim();
+    if (!name) continue;
+    const idx = next.findIndex(x => norm(x.name) === norm(name));
+    const row = {
+      id: idx >= 0 ? next[idx].id : `${Date.now()}-${Math.random()}`,
+      name,
+      quantity: Number(a.quantity) || 1,
+      unit: String(a.unit || '').trim()
+    };
+    if (idx >= 0) next[idx] = row;
+    else next.push(row);
+  }
+  return next;
+}
+
 function wooliesScript(items) {
   const payload = JSON.stringify(items.slice(0, 60));
   return `
@@ -48,9 +70,21 @@ export default function StuffApp() {
   const recording=!!recState?.isRecording,count=items.length,canSend=count>0&&!busy&&!recording;
   const listLabel=useMemo(()=>count?`Your list · ${count} ${count===1?'item':'items'}`:'Your list',[count]);
 
-  function apply(actions){setItems(current=>{let next=[...current];for(const r of actions?.remove||[]){const n=norm(r);next=next.filter(x=>norm(x.name)!==n)}for(const a of actions?.add||[]){const name=String(a?.name||'').trim();if(!name)continue;const idx=next.findIndex(x=>norm(x.name)===norm(name)),row={id:idx>=0?next[idx].id:`${Date.now()}-${Math.random()}`,name,quantity:Number(a.quantity)||1,unit:String(a.unit||'').trim()};idx>=0?next[idx]=row:next.push(row)}return next})}
-
-  async function processAudio(uri){if(!uri){setStatus("Couldn't save that recording. Try again.");return}setBusy(true);setStatus('Sorting your groceries…');try{const form=new FormData();form.append('audio',{uri,name:`stuff-shopping-${Date.now()}.m4a`,type:'audio/mp4'});form.append('existingShop',JSON.stringify(items));const res=await fetch(AUDIO_URL,{method:'POST',body:form}),data=await res.json().catch(()=>({}));if(!res.ok||!data?.success)throw Error(data?.error||'Could not process that recording.');apply(data.actions||{});const a=data?.actions?.add?.length||0,r=data?.actions?.remove?.length||0;setStatus(a||r?`Got it — ${a?r?`${a} added, ${r} removed`:`${a} ${a===1?'thing':'things'} added`:`${r} removed`}.`:'Nothing new to add.')}catch(e){setStatus(e?.message||'Could not process that recording.')}finally{setBusy(false)}}
+  async function processAudio(uri){
+    if(!uri){setStatus("Couldn't save that recording. Try again.");return}
+    setBusy(true);
+    setStatus('Sorting your groceries…');
+    try{
+      const form=new FormData();
+      form.append('audio',{uri,name:`stuff-shopping-${Date.now()}.m4a`,type:'audio/mp4'});
+      form.append('existingShop',JSON.stringify(items));
+      const res=await fetch(AUDIO_URL,{method:'POST',body:form}),data=await res.json().catch(()=>({}));
+      if(!res.ok||!data?.success)throw Error(data?.error||'Could not process that recording.');
+      const next=mergeItems(items,data.actions||{});
+      setItems(next);
+      setStatus(next.length?`Got it — ${next.length} ${next.length===1?'thing':'things'}.`:'Nothing on your list.');
+    }catch(e){setStatus(e?.message||'Could not process that recording.')}finally{setBusy(false)}
+  }
 
   async function start(){try{const p=await requestRecordingPermissionsAsync();if(!p.granted){Alert.alert('Microphone access needed','Allow microphone access so you can speak your grocery list.');return}await setAudioModeAsync({playsInSilentMode:true,allowsRecording:true});await recorder.prepareToRecordAsync();recorder.record();setStatus('Listening… tap Stop when you’re finished.')}catch(_){setStatus("Couldn't start the microphone. Try again.")}}
   async function stop(){try{setStatus('Finishing…');await recorder.stop();const uri=recorder.uri||recState?.url;await setAudioModeAsync({allowsRecording:false});await processAudio(uri)}catch(_){setBusy(false);setStatus("Couldn't finish that recording. Try again.")}}
@@ -72,9 +106,125 @@ export default function StuffApp() {
     setTimeout(()=>webRef.current?.injectJavaScript(wooliesScript(pending.current)),1000);
   }
 
+  function future(label){Alert.alert(label,`${label} is the next part of the app we’ll wire up.`)}
+
   if(mode==='woolies')return <SafeAreaView style={s.safe}><StatusBar barStyle="dark-content"/><View style={s.cartHead}><TouchableOpacity onPress={back} style={s.back}><Text style={s.backText}>‹ Shop</Text></TouchableOpacity><View style={{flex:1}}><Text style={s.cartTitle}>Woolies</Text><Text style={s.cartStatus} numberOfLines={1}>{status}</Text></View></View><WebView key={webKey} ref={webRef} source={{uri:cartUrl}} style={{flex:1}} onMessage={onMessage} onLoadEnd={onLoad} userAgent={UA} javaScriptEnabled domStorageEnabled sharedCookiesEnabled thirdPartyCookiesEnabled cacheEnabled incognito={false} setSupportMultipleWindows={false}/></SafeAreaView>;
 
-  return <SafeAreaView style={s.safe}><StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/><ScrollView contentContainerStyle={s.screen}><Text style={s.brand}>stuff{`\n`}the{`\n`}shopping<Text style={s.dot}>.</Text></Text><View style={s.intro}><Text style={s.tag}>We’ll do the groceries.</Text><Text style={s.question}>What do you need?</Text></View><TouchableOpacity style={[s.speak,recording&&s.stop,busy&&s.disabled]} onPress={recording?stop:start} disabled={busy}>{busy?<ActivityIndicator color="#171717"/>:<Text style={s.speakIcon}>{recording?'■':'●'}</Text>}<Text style={s.speakText}>{busy?'Sorting…':recording?'Stop':'Speak'}</Text></TouchableOpacity><Text style={s.status}>{status}</Text><View style={s.list}><TouchableOpacity style={s.listHead} onPress={()=>setOpen(v=>!v)}><Text style={s.listTitle}>{listLabel}</Text><View style={s.listHeadRight}>{open&&count>0&&<TouchableOpacity onPress={clearAll} style={s.clear}><Text style={s.clearText}>Clear all</Text></TouchableOpacity>}<Text style={s.chev}>{open?'⌃':'⌄'}</Text></View></TouchableOpacity>{open&&<View>{!count?<Text style={s.empty}>Nothing here yet.</Text>:items.map(i=><View key={i.id} style={s.row}><View style={{flex:1}}><Text style={s.item}>{title(i.name)}</Text><Text style={s.detail}>{detail(i)}</Text></View><TouchableOpacity style={s.remove} onPress={()=>setItems(v=>v.filter(x=>x.id!==i.id))}><Text style={s.removeText}>×</Text></TouchableOpacity></View>)}</View>}</View><TouchableOpacity style={s.share} onPress={share}><Text style={s.shareText}>Share with someone</Text></TouchableOpacity><TouchableOpacity style={[s.send,!canSend&&s.sendOff]} onPress={send} disabled={!canSend}><Text style={s.sendText}>Send to Woolies</Text></TouchableOpacity><Text style={s.note}>We’ll build your Woolies cart. You review it before checkout.</Text></ScrollView></SafeAreaView>;
+  return <SafeAreaView style={s.safe}>
+    <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
+    <ScrollView contentContainerStyle={s.screen}>
+      <Text style={s.brand}>stuff{`\n`}the{`\n`}shopping<Text style={s.dot}>.</Text></Text>
+
+      <View style={s.intro}>
+        <Text style={s.tag}>We’ll do the groceries.</Text>
+        <Text style={s.question}>What do you need?</Text>
+      </View>
+
+      <TouchableOpacity style={[s.speak,recording&&s.stop,busy&&s.disabled]} onPress={recording?stop:start} disabled={busy}>
+        {busy?<ActivityIndicator color="#FFFFFF"/>:<Text style={s.speakIcon}>{recording?'■':'●'}</Text>}
+        <Text style={s.speakText}>{busy?'Sorting…':recording?'Stop':'Tap to talk'}</Text>
+      </TouchableOpacity>
+
+      <Text style={s.status}>{status}</Text>
+
+      <View style={s.listBlock}>
+        <View style={s.listTop}>
+          <TouchableOpacity style={s.listToggle} onPress={()=>setOpen(v=>!v)}>
+            <Text style={s.listTitle}>{listLabel}</Text>
+            <Text style={s.chev}>{open?'⌃':'⌄'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.share} onPress={share}>
+            <Text style={s.shareText}>↗  Share</Text>
+          </TouchableOpacity>
+        </View>
+
+        {open&&<View style={s.listRows}>
+          {!count?<Text style={s.empty}>Nothing here yet.</Text>:items.map(i=><View key={i.id} style={s.row}>
+            <View style={{flex:1}}>
+              <Text style={s.item}>{title(i.name)}</Text>
+              <Text style={s.detail}>{detail(i)}</Text>
+            </View>
+            <TouchableOpacity style={s.remove} onPress={()=>setItems(v=>v.filter(x=>x.id!==i.id))}>
+              <Text style={s.removeText}>×</Text>
+            </TouchableOpacity>
+          </View>)}
+          {count>0&&<View style={s.clearRow}>
+            <TouchableOpacity onPress={clearAll} style={s.clearBottom}><Text style={s.clearBottomText}>Clear list</Text></TouchableOpacity>
+            <Text style={s.itemCount}>{count} {count===1?'item':'items'}</Text>
+          </View>}
+        </View>}
+      </View>
+
+      <TouchableOpacity style={[s.send,!canSend&&s.sendOff]} onPress={send} disabled={!canSend}>
+        <View style={s.wooliesMark}><Text style={s.wooliesMarkText}>W</Text></View>
+        <View style={s.sendCopy}>
+          <Text style={s.sendText}>Send to Woolies</Text>
+          <Text style={s.sendSub}>Add to your Woolworths cart</Text>
+        </View>
+        <Text style={s.sendArrow}>›</Text>
+      </TouchableOpacity>
+      <Text style={s.note}>We’ll build your Woolies cart. You review it before checkout.</Text>
+    </ScrollView>
+
+    <View style={s.bottomNav}>
+      <TouchableOpacity style={s.navItem}><Text style={s.navIcon}>⌂</Text><Text style={s.navLabelActive}>Home</Text></TouchableOpacity>
+      <TouchableOpacity style={s.navItem} onPress={()=>future('Household')}><Text style={s.navIcon}>◫</Text><Text style={s.navLabel}>Household</Text></TouchableOpacity>
+      <TouchableOpacity style={s.navItem} onPress={()=>future('Account')}><Text style={s.navIcon}>◎</Text><Text style={s.navLabel}>Account</Text></TouchableOpacity>
+      <TouchableOpacity style={s.navItem} onPress={()=>future('More')}><Text style={s.navMore}>•••</Text><Text style={s.navLabel}>More</Text></TouchableOpacity>
+    </View>
+  </SafeAreaView>;
 }
 
-const s=StyleSheet.create({safe:{flex:1,backgroundColor:'#F7F1E3'},screen:{padding:22,paddingTop:16,paddingBottom:36},brand:{color:'#171717',fontSize:29,lineHeight:25,fontWeight:'900',letterSpacing:-1.5},dot:{color:'#F4512C'},intro:{marginTop:46},tag:{fontSize:17,color:'#55514A',fontWeight:'600'},question:{marginTop:7,fontSize:38,lineHeight:41,color:'#171717',fontWeight:'900',letterSpacing:-1.4},speak:{marginTop:25,minHeight:72,borderRadius:36,backgroundColor:'#F4512C',flexDirection:'row',alignItems:'center',justifyContent:'center',gap:10,borderWidth:2,borderColor:'#171717'},stop:{backgroundColor:'#F5D95E'},disabled:{opacity:.65},speakIcon:{fontSize:17,color:'#171717'},speakText:{color:'#171717',fontSize:20,fontWeight:'900'},status:{minHeight:42,marginTop:12,color:'#55514A',fontSize:14,lineHeight:20,textAlign:'center'},list:{marginTop:14,borderTopWidth:2,borderBottomWidth:2,borderColor:'#171717'},listHead:{minHeight:58,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},listHeadRight:{flexDirection:'row',alignItems:'center',gap:10},listTitle:{color:'#171717',fontSize:18,fontWeight:'900'},clear:{paddingHorizontal:8,paddingVertical:6},clearText:{color:'#F4512C',fontSize:13,fontWeight:'900'},chev:{fontSize:24,fontWeight:'800'},empty:{color:'#777169',paddingVertical:14},row:{minHeight:59,flexDirection:'row',alignItems:'center',borderTopWidth:StyleSheet.hairlineWidth,borderTopColor:'#BEB6A7'},item:{color:'#171717',fontSize:16,fontWeight:'800'},detail:{marginTop:3,color:'#69635A',fontSize:13,fontWeight:'600'},remove:{width:44,height:44,alignItems:'center',justifyContent:'center'},removeText:{fontSize:27,color:'#69635A'},share:{marginTop:16,minHeight:54,borderRadius:27,backgroundColor:'#F5D95E',alignItems:'center',justifyContent:'center',borderWidth:1.5,borderColor:'#171717'},shareText:{color:'#171717',fontSize:16,fontWeight:'900'},send:{marginTop:10,minHeight:61,borderRadius:31,backgroundColor:'#171717',alignItems:'center',justifyContent:'center'},sendOff:{opacity:.24},sendText:{color:'#F7F1E3',fontSize:18,fontWeight:'900'},note:{marginTop:10,color:'#69635A',fontSize:12,lineHeight:17,textAlign:'center'},cartHead:{minHeight:64,paddingHorizontal:12,paddingVertical:8,backgroundColor:'#F7F1E3',borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:'#C9C1B4',flexDirection:'row',alignItems:'center'},back:{padding:10},backText:{fontSize:16,fontWeight:'900'},cartTitle:{fontSize:15,fontWeight:'900'},cartStatus:{marginTop:2,color:'#69635A',fontSize:11}});
+const s=StyleSheet.create({
+  safe:{flex:1,backgroundColor:'#F7F1E3'},
+  screen:{padding:22,paddingTop:16,paddingBottom:26},
+  brand:{color:'#171717',fontSize:29,lineHeight:25,fontWeight:'900',letterSpacing:-1.5},
+  dot:{color:'#F4512C'},
+  intro:{marginTop:46},
+  tag:{fontSize:17,color:'#55514A',fontWeight:'600'},
+  question:{marginTop:7,fontSize:33,lineHeight:36,color:'#171717',fontWeight:'900',letterSpacing:-1.2},
+  speak:{marginTop:23,minHeight:62,borderRadius:31,backgroundColor:'#F4512C',flexDirection:'row',alignItems:'center',justifyContent:'center',gap:10},
+  stop:{backgroundColor:'#F5D95E'},
+  disabled:{opacity:.65},
+  speakIcon:{fontSize:18,color:'#FFFFFF'},
+  speakText:{color:'#FFFFFF',fontSize:19,fontWeight:'900'},
+  status:{minHeight:34,marginTop:10,color:'#55514A',fontSize:14,lineHeight:20,textAlign:'center'},
+  listBlock:{marginTop:10},
+  listTop:{minHeight:54,flexDirection:'row',alignItems:'center',gap:12},
+  listToggle:{flex:1,flexDirection:'row',alignItems:'center',gap:8,minHeight:48},
+  listTitle:{color:'#171717',fontSize:18,fontWeight:'900'},
+  chev:{color:'#171717',fontSize:22,fontWeight:'900'},
+  share:{minHeight:42,paddingHorizontal:17,borderRadius:21,backgroundColor:'#F5D95E',alignItems:'center',justifyContent:'center'},
+  shareText:{color:'#171717',fontSize:14,fontWeight:'900'},
+  listRows:{borderTopWidth:StyleSheet.hairlineWidth,borderTopColor:'#BEB6A7'},
+  empty:{color:'#777169',paddingVertical:14},
+  row:{minHeight:59,flexDirection:'row',alignItems:'center',borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:'#BEB6A7'},
+  item:{color:'#171717',fontSize:16,fontWeight:'800'},
+  detail:{marginTop:3,color:'#69635A',fontSize:13,fontWeight:'600'},
+  remove:{width:44,height:44,alignItems:'center',justifyContent:'center'},
+  removeText:{fontSize:27,color:'#69635A'},
+  clearRow:{minHeight:48,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
+  clearBottom:{paddingVertical:10,paddingRight:10},
+  clearBottomText:{color:'#171717',fontSize:14,fontWeight:'800',textDecorationLine:'underline'},
+  itemCount:{color:'#69635A',fontSize:13,fontWeight:'700'},
+  send:{marginTop:13,minHeight:70,borderRadius:18,backgroundColor:'#006B54',paddingHorizontal:16,flexDirection:'row',alignItems:'center'},
+  sendOff:{opacity:.28},
+  wooliesMark:{width:44,height:44,borderRadius:22,backgroundColor:'#8CC63F',alignItems:'center',justifyContent:'center',marginRight:13},
+  wooliesMarkText:{color:'#FFFFFF',fontSize:22,fontWeight:'900',fontStyle:'italic'},
+  sendCopy:{flex:1},
+  sendText:{color:'#FFFFFF',fontSize:18,fontWeight:'900'},
+  sendSub:{marginTop:3,color:'#E5F1ED',fontSize:12,fontWeight:'600'},
+  sendArrow:{color:'#FFFFFF',fontSize:38,lineHeight:40,fontWeight:'300',marginLeft:8},
+  note:{marginTop:9,color:'#69635A',fontSize:12,lineHeight:17,textAlign:'center'},
+  bottomNav:{minHeight:82,backgroundColor:'#000000',paddingHorizontal:12,paddingTop:10,paddingBottom:10,flexDirection:'row',alignItems:'center',justifyContent:'space-around'},
+  navItem:{flex:1,alignItems:'center',justifyContent:'center'},
+  navIcon:{color:'#FFFFFF',fontSize:26,lineHeight:28,fontWeight:'700'},
+  navMore:{color:'#FFFFFF',fontSize:23,lineHeight:28,fontWeight:'900',letterSpacing:2},
+  navLabel:{marginTop:3,color:'#FFFFFF',fontSize:11,fontWeight:'700'},
+  navLabelActive:{marginTop:3,color:'#FFFFFF',fontSize:11,fontWeight:'900'},
+  cartHead:{minHeight:64,paddingHorizontal:12,paddingVertical:8,backgroundColor:'#F7F1E3',borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:'#C9C1B4',flexDirection:'row',alignItems:'center'},
+  back:{padding:10},
+  backText:{fontSize:16,fontWeight:'900'},
+  cartTitle:{fontSize:15,fontWeight:'900'},
+  cartStatus:{marginTop:2,color:'#69635A',fontSize:11}
+});
