@@ -11,7 +11,7 @@ Native Expo MVP for Stuff the Shopping.
 5. Woolworths: searches current products, applies Stuff matching preferences and sends confident matches into the Woolworths cart.
 6. Coles: matches the same list against current Coles product data and shows an estimated basket, matched products, specials and unmatched items. Direct Coles cart addition is not yet implemented.
 7. Applies saved shopping preferences to retailer matching:
-   - **Preferred supermarket** can be Woolworths or Coles.
+   - **Preferred supermarket** can be Woolworths or Coles and controls the retailer action shown on Home.
    - **Best match** prioritises the strongest product match.
    - **Cheapest suitable** picks the lowest-priced option from products that remain close enough to the strongest match.
    - **Prefer specials** gives suitable on-special products a meaningful ranking boost.
