@@ -10,31 +10,10 @@ import {
 import { WebView } from 'react-native-webview';
 
 const DAVID_URL = 'https://hellodavid.com.au/?app=1';
-const WOOLIES_URL = 'https://www.woolworths.com.au/';
-const SAFARI_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1';
-
-function buildWooliesAuthCheckScript() {
-  return `
-  (() => {
-    try {
-      const text = String(document.body?.innerText || '').toLowerCase();
-      const path = String(location.pathname || '').toLowerCase();
-      const loggedOut =
-        path.includes('login') ||
-        text.includes('welcome to woolworths online') ||
-        text.includes('log in or sign up') ||
-        text.includes('forgot password');
-
-      window.ReactNativeWebView.postMessage(JSON.stringify({
-        type: 'WOOLIES_AUTH_STATE',
-        loggedIn: !loggedOut,
-        url: location.href
-      }));
-    } catch (_) {}
-  })();
-  true;
-  `;
-}
+const WOOLIES_HOME = 'https://www.woolworths.com.au/';
+const WOOLIES_CART = 'https://www.woolworths.com.au/shop/cart';
+const SAFARI_USER_AGENT =
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1';
 
 function buildWooliesScript(items) {
   const payload = JSON.stringify(Array.isArray(items) ? items.slice(0, 60) : []);
@@ -43,10 +22,42 @@ function buildWooliesScript(items) {
   (async () => {
     const items = ${payload};
     const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
     const post = (type, message, extra = {}) => {
       try {
         window.ReactNativeWebView.postMessage(JSON.stringify({ type, message, ...extra }));
       } catch (_) {}
+    };
+
+    const setProgress = text => {
+      try {
+        let box = document.getElementById('hello-david-mobile-progress');
+        if (!box) {
+          box = document.createElement('div');
+          box.id = 'hello-david-mobile-progress';
+          Object.assign(box.style, {
+            position: 'fixed',
+            top: '16px',
+            left: '16px',
+            right: '16px',
+            zIndex: '2147483647',
+            padding: '14px 16px',
+            borderRadius: '14px',
+            background: '#fff',
+            color: '#171717',
+            font: '14px/1.45 Arial, sans-serif',
+            boxShadow: '0 10px 35px rgba(0,0,0,.22)',
+            border: '1px solid #ddd'
+          });
+          box.innerHTML =
+            '<strong style="font-size:16px">Hello David</strong>' +
+            '<div id="hello-david-mobile-progress-text" style="margin-top:5px"></div>';
+          document.body.appendChild(box);
+        }
+        const el = document.getElementById('hello-david-mobile-progress-text');
+        if (el) el.textContent = text;
+      } catch (_) {}
+      post('WOOLIES_STATUS', text);
     };
 
     async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
@@ -59,80 +70,80 @@ function buildWooliesScript(items) {
       }
     }
 
-    function overlay() {
-      let box = document.getElementById('hello-david-mobile-progress');
-      if (box) return box;
-      box = document.createElement('div');
-      box.id = 'hello-david-mobile-progress';
-      Object.assign(box.style, {
-        position: 'fixed', top: '16px', left: '16px', right: '16px', zIndex: '2147483647',
-        padding: '14px 16px', borderRadius: '14px', background: '#fff', color: '#171717',
-        font: '14px/1.45 Arial, sans-serif', boxShadow: '0 10px 35px rgba(0,0,0,.22)',
-        border: '1px solid #ddd'
-      });
-      box.innerHTML = '<strong style="font-size:16px">Hello David</strong><div id="hello-david-mobile-progress-text" style="margin-top:5px">Starting your Woolies shop…</div>';
-      document.body.appendChild(box);
-      return box;
+    function normaliseUnit(value) {
+      return String(value || '')
+        .toLowerCase()
+        .replace(/litres?/g, 'l')
+        .replace(/millilitres?/g, 'ml')
+        .replace(/kilograms?/g, 'kg')
+        .replace(/grams?/g, 'g')
+        .trim();
     }
 
-    function setProgress(text) {
-      overlay();
-      const el = document.getElementById('hello-david-mobile-progress-text');
-      if (el) el.textContent = text;
-      post('WOOLIES_STATUS', text);
+    function requestText(item) {
+      return (String(item.name || '') + ' ' + String(item.unit || '')).toLowerCase();
     }
 
-    function cleanQuery(name) {
-      let query = String(name || '')
+    function cleanQuery(item) {
+      let query = String(item.name || '')
         .replace(/\\b(whatever(?:'s| is)? on special|on special|cheapest|best value|value option)\\b/gi, '')
         .replace(/\\s+/g, ' ')
         .trim();
 
-      const aliases = [
-        [/\\bweet\\s*-?\\s*a?bix\\b/gi, 'Weet-Bix'],
-        [/\\bweetbix\\b/gi, 'Weet-Bix'],
-        [/\\bweet bix\\b/gi, 'Weet-Bix']
-      ];
-      for (const [pattern, replacement] of aliases) query = query.replace(pattern, replacement);
+      query = query
+        .replace(/\\bweet\\s*-?\\s*a?bix\\b/gi, 'Weet-Bix')
+        .replace(/\\bweetbix\\b/gi, 'Weet-Bix')
+        .replace(/\\bweet bix\\b/gi, 'Weet-Bix');
 
-      // When someone says "X or Y", use the first acceptable option as the default search.
-      // This is safer than asking Woolworths to interpret the whole phrase as one product.
-      if (/\\s+or\\s+/i.test(query)) query = query.split(/\\s+or\\s+/i)[0].trim();
+      if (/\\bbaby\\s+(?:roma\\s+)?tomatoes?\\b/i.test(query)) {
+        query = 'cherry tomatoes';
+      }
+
+      if (/\\s+or\\s+/i.test(query)) {
+        query = query.split(/\\s+or\\s+/i)[0].trim();
+      }
+
       return query;
     }
 
     function words(value) {
-      const stop = new Set(['the','a','an','of','and','for','with','on','pack','packet','bag','box','carton','large','small','medium']);
-      return String(value || '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w && !stop.has(w));
+      const stop = new Set([
+        'the','a','an','of','and','for','with','on',
+        'pack','packet','bag','box','carton','large','small','medium'
+      ]);
+      return String(value || '')
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter(w => w && !stop.has(w));
     }
 
     function productText(product) {
-      return String(product.DisplayName || product.Name || '') + ' ' + String(product.Brand || '') + ' ' + String(product.PackageSize || '');
-    }
-
-    function normaliseUnit(value) {
-      return String(value || '').toLowerCase().replace(/litres?/g, 'l').replace(/millilitres?/g, 'ml').replace(/kilograms?/g, 'kg').replace(/grams?/g, 'g').trim();
+      return (
+        String(product.DisplayName || product.Name || '') + ' ' +
+        String(product.Brand || '') + ' ' +
+        String(product.PackageSize || '')
+      ).toLowerCase();
     }
 
     function requestedMeasure(item) {
-      const rawUnit = normaliseUnit(item.unit);
-      const rawName = String(item.name || '').toLowerCase();
-      const combined = rawName + ' ' + rawUnit;
+      const unit = normaliseUnit(item.unit);
+      const name = String(item.name || '').toLowerCase();
+      const combined = name + ' ' + unit;
       const explicit = combined.match(/\\b(\\d+(?:\\.\\d+)?)\\s*(kg|g|l|ml)\\b/i);
-      if (explicit) return { value: Number(explicit[1]), unit: explicit[2].toLowerCase(), explicit: true };
+
+      if (explicit) {
+        return { value: Number(explicit[1]), unit: explicit[2].toLowerCase() };
+      }
 
       const quantity = Number(item.qty ?? item.quantity ?? 1);
-      if (Number.isFinite(quantity) && quantity > 0) {
-        if (/^(l|ml|kg|g)$/.test(rawUnit)) return { value: quantity, unit: rawUnit, explicit: true };
-        if (/\\b(l|ml|kg|g)\\b/.test(rawUnit)) {
-          const found = rawUnit.match(/\\b(l|ml|kg|g)\\b/);
-          if (found?.[1]) return { value: quantity, unit: found[1], explicit: true };
-        }
+      if (Number.isFinite(quantity) && quantity > 0 && /^(kg|g|l|ml)$/.test(unit)) {
+        return { value: quantity, unit };
       }
+
       return null;
     }
 
-    function toBaseMeasure(value, unit) {
+    function toBase(value, unit) {
       if (!Number.isFinite(value)) return null;
       if (unit === 'kg' || unit === 'l') return value * 1000;
       if (unit === 'g' || unit === 'ml') return value;
@@ -140,47 +151,42 @@ function buildWooliesScript(items) {
     }
 
     function productMeasure(product) {
-      const text = (String(product.PackageSize || '') + ' ' + String(product.DisplayName || product.Name || '')).toLowerCase();
+      const text =
+        (String(product.PackageSize || '') + ' ' + String(product.DisplayName || product.Name || '')).toLowerCase();
       const match = text.match(/\\b(\\d+(?:\\.\\d+)?)\\s*(kg|g|l|ml)\\b/i);
       if (!match) return null;
-      return {
-        value: Number(match[1]),
-        unit: match[2].toLowerCase(),
-        base: toBaseMeasure(Number(match[1]), match[2].toLowerCase())
-      };
-    }
 
-    function isLargePreference(item) {
-      return /\\b(large|big|family|largest|biggest)\\b/i.test(String(item.name || '') + ' ' + String(item.unit || ''));
-    }
-
-    function requestText(item) {
-      return (String(item.name || '') + ' ' + String(item.unit || '')).toLowerCase();
+      const value = Number(match[1]);
+      const unit = match[2].toLowerCase();
+      return { value, unit, base: toBase(value, unit) };
     }
 
     function isHardMismatch(item, product) {
       const request = requestText(item);
-      const text = productText(product).toLowerCase();
+      const text = productText(product);
 
-      // Fresh produce should never silently turn into canned / processed produce.
-      if (/\\b(tomato|tomatoes|toms)\\b/.test(request) && !/\\b(tin|tinned|can|canned|diced|crushed|passata|paste|sauce)\\b/.test(request)) {
-        if (/\\b(tin|tinned|can|canned|diced|crushed|peeled|passata|paste|sauce)\\b/.test(text)) return true;
+      if (/\\bbaby\\s+(?:roma\\s+)?tomatoes?\\b/.test(request)) {
+        if (!/\\btomato(?:es)?\\b/.test(text)) return true;
+        if (!/\\b(cherry|grape|cocktail|solanato|mini)\\b/.test(text)) return true;
+        if (/\\b(mutti|whole|diced|crushed|peeled|passata|paste|sauce|canned|tinned|tin|can|jar)\\b/.test(text)) return true;
+      } else if (/\\btomato(?:es)?\\b/.test(request)) {
+        if (/\\b(mutti|diced|crushed|peeled|passata|paste|sauce|canned|tinned|tin|can|jar)\\b/.test(text)) return true;
       }
 
-      // If "baby" was requested it needs to survive the match; if it wasn't, don't invent it for carrots.
-      if (/\\bbaby\\s+(tomato|tomatoes|toms)\\b/.test(request) && !/\\bbaby\\b/.test(text)) return true;
-      if (/\\bcarrots?\\b/.test(request) && !/\\bbaby\\b/.test(request) && /\\bbaby\\s+carrots?\\b/.test(text)) return true;
+      if (/\\bcarrots?\\b/.test(request) && !/\\bbaby\\b/.test(request) && /\\bbaby\\s+carrots?\\b/.test(text)) {
+        return true;
+      }
 
-      // Bread requests must resolve to edible bread, not ingredients.
-      if (/\\bbread\\b/.test(request) && /\\b(mix|flour|crumb|crumbs|breadcrumbs|bread crumbs)\\b/.test(text)) return true;
+      if (/\\bbread\\b/.test(request) && /\\b(mix|flour|crumb|crumbs|breadcrumbs)\\b/.test(text)) {
+        return true;
+      }
 
-      // An explicit pack size is a requirement, not a suggestion. Reject wildly wrong sizes.
-      const wantedMeasure = requestedMeasure(item);
-      const actualMeasure = productMeasure(product);
-      if (wantedMeasure && actualMeasure) {
-        const wantedBase = toBaseMeasure(wantedMeasure.value, wantedMeasure.unit);
-        if (wantedBase && actualMeasure.base) {
-          const ratio = actualMeasure.base / wantedBase;
+      const wanted = requestedMeasure(item);
+      const actual = productMeasure(product);
+      if (wanted && actual) {
+        const wantedBase = toBase(wanted.value, wanted.unit);
+        if (wantedBase && actual.base) {
+          const ratio = actual.base / wantedBase;
           if (ratio < 0.60 || ratio > 1.55) return true;
         }
       }
@@ -189,42 +195,60 @@ function buildWooliesScript(items) {
     }
 
     function buildSearchQuery(item) {
-      let query = cleanQuery(item.name);
+      let query = cleanQuery(item);
       const measure = requestedMeasure(item);
+
       if (measure) {
-        const measurePattern = new RegExp('\\\\b' + measure.value + '\\\\s*' + measure.unit + '\\\\b', 'i');
-        if (!measurePattern.test(query)) query = query + ' ' + measure.value + measure.unit;
+        const token = String(measure.value) + measure.unit;
+        if (!query.toLowerCase().includes(token.toLowerCase())) {
+          query += ' ' + token;
+        }
       }
+
       return query.trim();
     }
 
     function rankProduct(item, product) {
-      const query = cleanQuery(item.name);
+      const query = cleanQuery(item);
       const wantedWords = words(query);
-      const text = productText(product).toLowerCase();
+      const text = productText(product);
       const matchedWords = wantedWords.filter(w => text.includes(w)).length;
       const invalid = isHardMismatch(item, product);
       let score = invalid ? -10000 : 0;
 
-      for (const word of wantedWords) if (text.includes(word)) score += 14;
-      if (query && text.includes(query.toLowerCase())) score += 40;
-
-      const unit = normaliseUnit(item.unit);
-      const packSize = unit.match(/(?:pack|packet|box|bag)\\s+of\\s+(\\d+)/i)?.[1];
-      if (packSize) {
-        const packPattern = new RegExp('(?:\\\\b' + packSize + '\\\\s*(?:pack|pk|x)\\\\b|\\\\bpack\\\\s*of\\\\s*' + packSize + '\\\\b)', 'i');
-        if (packPattern.test(text)) score += 50;
+      for (const word of wantedWords) {
+        if (text.includes(word)) score += 14;
       }
 
-      const wantedMeasure = requestedMeasure(item);
-      const actualMeasure = productMeasure(product);
-      if (wantedMeasure) {
-        if (!actualMeasure) {
+      if (query && text.includes(query.toLowerCase())) score += 45;
+
+      const request = requestText(item);
+
+      if (/\\bbaby\\s+(?:roma\\s+)?tomatoes?\\b/.test(request)) {
+        if (/\\b(cherry|grape|cocktail|solanato|mini)\\b/.test(text)) score += 140;
+      }
+
+      if (/\\bcarrots?\\b/.test(request) && !/\\bbaby\\b/.test(request) && !/\\bbaby\\b/.test(text)) {
+        score += 35;
+      }
+
+      if (/\\bwhite\\s+bread\\b/.test(request) && /\\bwhite\\b/.test(text) && /\\b(bread|loaf)\\b/.test(text)) {
+        score += 60;
+      }
+
+      if (/\\bgarlic\\s+bread\\b/.test(request) && /\\bgarlic\\b/.test(text) && /\\bbread\\b/.test(text)) {
+        score += 70;
+      }
+
+      const wanted = requestedMeasure(item);
+      const actual = productMeasure(product);
+      if (wanted) {
+        if (!actual) {
           score -= 60;
         } else {
-          const wantedBase = toBaseMeasure(wantedMeasure.value, wantedMeasure.unit);
-          if (wantedBase && actualMeasure.base) {
-            const ratio = actualMeasure.base / wantedBase;
+          const wantedBase = toBase(wanted.value, wanted.unit);
+          if (wantedBase && actual.base) {
+            const ratio = actual.base / wantedBase;
             if (ratio >= 0.95 && ratio <= 1.05) score += 140;
             else if (ratio >= 0.85 && ratio <= 1.15) score += 85;
             else if (ratio >= 0.70 && ratio <= 1.30) score += 25;
@@ -233,44 +257,36 @@ function buildWooliesScript(items) {
         }
       }
 
-      const request = requestText(item);
-      if (/\\bcarrots?\\b/.test(request) && !/\\bbaby\\b/.test(request) && !/\\bbaby\\b/.test(text)) score += 30;
-      if (/\\bbaby\\s+(tomato|tomatoes|toms)\\b/.test(request) && /\\b(baby|cherry|grape)\\b/.test(text)) score += 65;
-      if (/\\bwhite\\s+bread\\b/.test(request) && /\\bwhite\\b/.test(text) && /\\bbread|loaf\\b/.test(text)) score += 55;
-      if (/\\bgarlic\\s+bread\\b/.test(request) && /\\bgarlic\\b/.test(text) && /\\bbread\\b/.test(text)) score += 65;
-
-      if (isLargePreference(item) && actualMeasure?.base) {
-        const name = cleanQuery(item.name).toLowerCase();
-        if (/weet[- ]?bix|weetabix/.test(name)) {
-          if (actualMeasure.base >= 1000 && actualMeasure.unit !== 'ml' && actualMeasure.unit !== 'l') score += 75;
-          else if (actualMeasure.base >= 700) score += 35;
-          else score -= 40;
-        } else {
-          score += Math.min(25, actualMeasure.base / 100);
+      if (/\\b(large|big|family|largest|biggest)\\b/i.test(request) && actual?.base) {
+        if (/weet[- ]?bix|weetabix/.test(query.toLowerCase())) {
+          if (actual.base >= 1000 && actual.unit !== 'ml' && actual.unit !== 'l') score += 80;
+          else if (actual.base >= 700) score += 35;
+          else score -= 45;
         }
       }
 
-      const explicitlyWantsSpecial = /special|sale/i.test(item.name || '') || /special|sale/i.test(unit);
-      if (product.IsOnSpecial) score += explicitlyWantsSpecial ? 30 : 6;
-      else if (explicitlyWantsSpecial) score -= 8;
+      if (product.IsOnSpecial) score += 6;
       if (product.IsAvailable === false || product.IsInStock === false) score -= 200;
 
       return { product, score, matchedWords, wantedWords, invalid };
     }
 
-    function confidentMatch(ranked) {
-      if (!ranked || ranked.invalid) return false;
-      const count = ranked.wantedWords.length;
+    function confidentMatch(result) {
+      if (!result || result.invalid) return false;
+      const count = result.wantedWords.length;
       if (!count) return false;
       const needed = count === 1 ? 1 : Math.min(2, count);
-      return ranked.matchedWords >= needed && ranked.score >= 20;
+      return result.matchedWords >= needed && result.score >= 20;
     }
 
     async function searchProducts(item) {
       const query = buildSearchQuery(item);
       const response = await fetchWithTimeout('/apis/ui/Search/products', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json, text/plain, */*' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json, text/plain, */*'
+        },
         credentials: 'same-origin',
         body: JSON.stringify({
           Filters: [],
@@ -288,28 +304,35 @@ function buildWooliesScript(items) {
           EnableAdReRanking: false
         })
       }, 12000);
-      if (!response.ok) throw new Error('Search failed (' + response.status + ')');
+
+      if (!response.ok) {
+        throw new Error('Search failed (' + response.status + ')');
+      }
+
       const data = await response.json();
       const products = [];
+
       for (const group of data?.Products || []) {
-        for (const product of group?.Products || []) products.push(product);
+        for (const product of group?.Products || []) {
+          products.push(product);
+        }
       }
+
       return products;
     }
 
-    function safeQuantity(item, product) {
+    function safeQuantity(item) {
       let wanted = Number(item.qty ?? item.quantity ?? 1);
       if (!Number.isFinite(wanted) || wanted <= 0) wanted = 1;
-      const unit = normaliseUnit(item.unit);
-      const text = productText(product).toLowerCase();
+
       if (requestedMeasure(item)) return 1;
       if (wanted > 12) return 1;
-      if (/^(pack|packet|box|bag|carton|bottle|tin|can|loaf|jar)/.test(unit)) return Math.max(1, Math.min(6, Math.round(wanted)));
-      if (wanted > 1 && /(roll|muffin|fillet|piece|item)s?/.test(unit)) {
-        const exactPack = new RegExp('(?:\\\\b' + wanted + '\\\\s*(?:pack|pk|x)\\\\b|\\\\bpack\\\\s*of\\\\s*' + wanted + '\\\\b)', 'i');
-        if (exactPack.test(text)) return 1;
-        return Math.max(1, Math.min(12, Math.round(wanted)));
+
+      const unit = normaliseUnit(item.unit);
+      if (/^(pack|packet|box|bag|carton|bottle|tin|can|loaf|jar)/.test(unit)) {
+        return Math.max(1, Math.min(6, Math.round(wanted)));
       }
+
       if (wanted > 6) return 1;
       return Math.max(1, Math.min(6, Math.round(wanted)));
     }
@@ -318,7 +341,7 @@ function buildWooliesScript(items) {
       return {
         items: rows.map(row => ({
           stockcode: Number(row.product.Stockcode),
-          quantity: Math.max(1, Math.min(12, Number(row.quantity) || 1)),
+          quantity: safeQuantity(row.item),
           source: row.product.Source || 'SearchServiceSearchProducts',
           diagnostics: row.product.Diagnostics || '0',
           searchTerm: buildSearchQuery(row.item),
@@ -331,32 +354,43 @@ function buildWooliesScript(items) {
     }
 
     async function addRows(rows) {
-      for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const response = await fetchWithTimeout('/api/v3/ui/trolley/update', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': '*/*'
+          },
+          credentials: 'same-origin',
+          body: JSON.stringify(trolleyBody(rows))
+        }, 12000);
+
+        if (!response.ok) {
+          return { ok: false, detail: 'HTTP ' + response.status };
+        }
+
+        let body = null;
         try {
-          const response = await fetchWithTimeout('/api/v3/ui/trolley/update', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Accept': '*/*' },
-            credentials: 'same-origin',
-            body: JSON.stringify(trolleyBody(rows))
-          }, 12000);
-          if (response.ok) return true;
+          body = await response.clone().json();
         } catch (_) {}
-        await sleep(350 * (attempt + 1));
+
+        return { ok: true, body };
+      } catch (error) {
+        return { ok: false, detail: error?.message || 'request failed' };
       }
-      return false;
     }
 
     try {
       if (!Array.isArray(items) || !items.length) {
         setProgress('There is nothing to add.');
-        post('WOOLIES_DONE', 'Nothing to add.', { success: false });
+        post('WOOLIES_DONE', 'Nothing to add.', { success: false, added: 0 });
         return true;
       }
 
       const selected = [];
       const unmatched = [];
       const searchFailed = [];
-      const usedStockcodes = new Map();
+      const usedStockcodes = new Set();
 
       for (let index = 0; index < items.length; index++) {
         const item = items[index];
@@ -366,9 +400,7 @@ function buildWooliesScript(items) {
         try {
           products = await searchProducts(item);
         } catch (error) {
-          console.warn('Woolies search failed for', item.name, error);
           searchFailed.push(item.name);
-          await sleep(200);
           continue;
         }
 
@@ -377,65 +409,58 @@ function buildWooliesScript(items) {
           .sort((a, b) => b.score - a.score || Number(a.product.Price || 9999) - Number(b.product.Price || 9999));
 
         const best = ranked[0];
+
         if (!confidentMatch(best) || !best.product.Stockcode) {
           unmatched.push(item.name);
-          await sleep(150);
           continue;
         }
 
         const stockcode = String(best.product.Stockcode);
         if (usedStockcodes.has(stockcode)) {
           unmatched.push(item.name);
-          await sleep(150);
           continue;
         }
 
-        usedStockcodes.set(stockcode, item.name);
-        selected.push({ item, product: best.product, quantity: safeQuantity(item, best.product) });
-        await sleep(150);
+        usedStockcodes.add(stockcode);
+        selected.push({ item, product: best.product });
+        await sleep(120);
       }
 
       let added = 0;
       let failed = 0;
-      const batchSize = 5;
 
-      for (let i = 0; i < selected.length; i += batchSize) {
-        const batchRows = selected.slice(i, i + batchSize);
-        setProgress('Adding ' + Math.min(i + batchSize, selected.length) + ' of ' + selected.length + ' matched products…');
+      for (let i = 0; i < selected.length; i++) {
+        const row = selected[i];
+        setProgress('Adding ' + (i + 1) + ' of ' + selected.length + ': ' + row.item.name);
 
-        const batchOk = await addRows(batchRows);
-        if (batchOk) {
-          added += batchRows.length;
-        } else {
-          for (const row of batchRows) {
-            const rowOk = await addRows([row]);
-            if (rowOk) added += 1;
-            else failed += 1;
-            await sleep(150);
-          }
-        }
-        await sleep(250);
+        const result = await addRows([row]);
+        if (result.ok) added += 1;
+        else failed += 1;
+
+        await sleep(180);
       }
 
       const parts = [String(added) + ' products added.'];
       if (unmatched.length) parts.push('Could not confidently match: ' + unmatched.join(', ') + '.');
-      if (searchFailed.length) parts.push('Woolies search timed out for: ' + searchFailed.join(', ') + '.');
-      if (failed) parts.push(String(failed) + ' matched products failed to add.');
-      parts.push('Opening your cart to review.');
+      if (searchFailed.length) parts.push('Search failed for: ' + searchFailed.join(', ') + '.');
+      if (failed) parts.push(String(failed) + ' products failed to add.');
+      parts.push('Refreshing your cart.');
+
       const summary = parts.join(' ');
       setProgress(summary);
-      post('WOOLIES_DONE', summary, { success: added > 0, added, failed, unmatched, searchFailed });
-
-      if (added > 0) {
-        await sleep(900);
-        location.href = '/shop/cart';
-      }
+      post('WOOLIES_DONE', summary, {
+        success: added > 0,
+        added,
+        failed,
+        unmatched,
+        searchFailed
+      });
     } catch (error) {
       const message = 'Could not finish the Woolies shop: ' + (error?.message || 'unknown error') + '.';
-      console.error('Hello David mobile Woolies automation failed', error);
       setProgress(message);
-      post('WOOLIES_DONE', message, { success: false });
+      post('WOOLIES_DONE', message, { success: false, added: 0 });
     }
+
     return true;
   })();
   true;
@@ -446,7 +471,6 @@ export default function App() {
   const webRef = useRef(null);
   const pendingItemsRef = useRef(null);
   const injectedForRunRef = useRef(false);
-  const awaitingLoginRef = useRef(false);
   const [url, setUrl] = useState(DAVID_URL);
   const [status, setStatus] = useState('David');
 
@@ -455,7 +479,6 @@ export default function App() {
   function goDavid() {
     pendingItemsRef.current = null;
     injectedForRunRef.current = false;
-    awaitingLoginRef.current = false;
     setStatus('David');
     setUrl(DAVID_URL + '&t=' + Date.now());
   }
@@ -463,21 +486,13 @@ export default function App() {
   function goWoolies() {
     pendingItemsRef.current = null;
     injectedForRunRef.current = false;
-    awaitingLoginRef.current = false;
-    setStatus('Woolies');
-    setUrl(WOOLIES_URL + '?helloDavid=' + Date.now());
-  }
-
-  function startPendingShop() {
-    if (!pendingItemsRef.current || injectedForRunRef.current) return;
-    awaitingLoginRef.current = false;
-    injectedForRunRef.current = true;
-    setStatus('Matching your Woolies products…');
-    webRef.current?.injectJavaScript(buildWooliesScript(pendingItemsRef.current));
+    setStatus('Woolies cart');
+    setUrl(WOOLIES_CART + '?helloDavid=' + Date.now());
   }
 
   function handleMessage(event) {
     let message;
+
     try {
       message = JSON.parse(event.nativeEvent.data);
     } catch (_) {
@@ -486,22 +501,16 @@ export default function App() {
 
     if (message?.type === 'HELLO_DAVID_SEND_TO_WOOLIES') {
       const items = Array.isArray(message.items) ? message.items : [];
-      if (!items.length) return;
+      if (!items.length) {
+        setStatus('Nothing to send');
+        return;
+      }
+
       pendingItemsRef.current = items;
       injectedForRunRef.current = false;
-      awaitingLoginRef.current = true;
-      setStatus('Checking your Woolies login…');
-      setUrl(WOOLIES_URL + '?helloDavid=' + Date.now());
-      return;
-    }
+      setStatus('Opening Woolies cart…');
 
-    if (message?.type === 'WOOLIES_AUTH_STATE') {
-      if (!pendingItemsRef.current || injectedForRunRef.current) return;
-      if (message.loggedIn) startPendingShop();
-      else {
-        awaitingLoginRef.current = true;
-        setStatus('Log in to Woolies — David will continue automatically');
-      }
+      setUrl(WOOLIES_CART + '?helloDavid=' + Date.now());
       return;
     }
 
@@ -511,19 +520,29 @@ export default function App() {
     }
 
     if (message?.type === 'WOOLIES_DONE') {
+      const added = Number(message.added || 0);
       pendingItemsRef.current = null;
       injectedForRunRef.current = true;
-      awaitingLoginRef.current = false;
-      setStatus(message.message || 'Cart ready to review');
+
+      if (added > 0) {
+        setStatus('Cart ready — ' + added + ' added');
+        setTimeout(() => {
+          setUrl(WOOLIES_CART + '?helloDavidDone=' + Date.now());
+        }, 350);
+      } else {
+        setStatus(message.message || 'Nothing was added');
+      }
     }
   }
 
   function handleLoadEnd(event) {
-    const loadedUrl = event.nativeEvent.url || '';
+    const loadedUrl = String(event.nativeEvent.url || '');
     if (!loadedUrl.includes('woolworths.com.au')) return;
     if (!pendingItemsRef.current || injectedForRunRef.current) return;
-    setStatus(awaitingLoginRef.current ? 'Checking your Woolies login…' : 'Opening Woolies…');
-    webRef.current?.injectJavaScript(buildWooliesAuthCheckScript());
+
+    injectedForRunRef.current = true;
+    setStatus('Matching your Woolies products…');
+    webRef.current?.injectJavaScript(buildWooliesScript(pendingItemsRef.current));
   }
 
   return (
@@ -534,11 +553,19 @@ export default function App() {
           <Text style={styles.brand}>HELLO DAVID</Text>
           <Text style={styles.status} numberOfLines={1}>{status}</Text>
         </View>
+
         <View style={styles.nav}>
-          <TouchableOpacity style={[styles.navButton, !isWoolies && styles.navActive]} onPress={goDavid}>
+          <TouchableOpacity
+            style={[styles.navButton, !isWoolies && styles.navActive]}
+            onPress={goDavid}
+          >
             <Text style={styles.navText}>David</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.navButton, isWoolies && styles.navActive]} onPress={goWoolies}>
+
+          <TouchableOpacity
+            style={[styles.navButton, isWoolies && styles.navActive]}
+            onPress={goWoolies}
+          >
             <Text style={styles.navText}>Woolies</Text>
           </TouchableOpacity>
         </View>
@@ -581,11 +608,37 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   brandWrap: { flex: 1, minWidth: 0 },
-  brand: { fontSize: 13, fontWeight: '800', letterSpacing: 0.7, color: '#50514F' },
-  status: { fontSize: 11, marginTop: 2, color: '#737470' },
-  nav: { flexDirection: 'row', gap: 6 },
-  navButton: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: '#efefe9' },
-  navActive: { backgroundColor: '#B4ADEA' },
-  navText: { fontSize: 12, fontWeight: '700', color: '#292a28' },
-  webview: { flex: 1, backgroundColor: '#fff' },
+  brand: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.7,
+    color: '#50514F',
+  },
+  status: {
+    fontSize: 11,
+    marginTop: 2,
+    color: '#737470',
+  },
+  nav: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  navButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#efefe9',
+  },
+  navActive: {
+    backgroundColor: '#B4ADEA',
+  },
+  navText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#292a28',
+  },
+  webview: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
 });
