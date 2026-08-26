@@ -1,0 +1,26 @@
+name: Apply prelaunch guardrails
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-prelaunch-guardrails.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply guardrails
+        run: python3 .github/scripts/prelaunch_guardrails.py
+      - name: Commit guardrails
+        run: |
+          git config user.name "stuff-shopping-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add mobile/StuffApp.js mobile/stuffData.js
+          git commit -m "Add prelaunch legal and retailer guardrails"
+          git push origin HEAD:main
