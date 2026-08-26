@@ -10,7 +10,6 @@ import {
 import { WebView } from 'react-native-webview';
 
 const DAVID_URL = 'https://hellodavid.com.au/?app=1';
-const WOOLIES_HOME = 'https://www.woolworths.com.au/';
 const WOOLIES_CART = 'https://www.woolworths.com.au/shop/cart';
 const SAFARI_USER_AGENT =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1';
@@ -29,7 +28,7 @@ function buildWooliesScript(items) {
       } catch (_) {}
     };
 
-    const setProgress = text => {
+    function setProgress(text) {
       try {
         let box = document.getElementById('hello-david-mobile-progress');
         if (!box) {
@@ -58,9 +57,9 @@ function buildWooliesScript(items) {
         if (el) el.textContent = text;
       } catch (_) {}
       post('WOOLIES_STATUS', text);
-    };
+    }
 
-    async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
+    async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
@@ -84,23 +83,26 @@ function buildWooliesScript(items) {
       return (String(item.name || '') + ' ' + String(item.unit || '')).toLowerCase();
     }
 
+    function isBabyTomatoRequest(item) {
+      const text = requestText(item);
+      return text.includes('baby tomato') || text.includes('baby roma tomato');
+    }
+
     function cleanQuery(item) {
       let query = String(item.name || '')
-        .replace(/\\b(whatever(?:'s| is)? on special|on special|cheapest|best value|value option)\\b/gi, '')
-        .replace(/\\s+/g, ' ')
+        .replace(/\b(whatever(?:'s| is)? on special|on special|cheapest|best value|value option)\b/gi, '')
+        .replace(/\s+/g, ' ')
         .trim();
 
       query = query
-        .replace(/\\bweet\\s*-?\\s*a?bix\\b/gi, 'Weet-Bix')
-        .replace(/\\bweetbix\\b/gi, 'Weet-Bix')
-        .replace(/\\bweet bix\\b/gi, 'Weet-Bix');
+        .replace(/\bweet\s*-?\s*a?bix\b/gi, 'Weet-Bix')
+        .replace(/\bweetbix\b/gi, 'Weet-Bix')
+        .replace(/\bweet bix\b/gi, 'Weet-Bix');
 
-      if (/\\bbaby\\s+(?:roma\\s+)?tomatoes?\\b/i.test(query)) {
-        query = 'cherry tomatoes';
-      }
+      if (isBabyTomatoRequest(item)) query = 'cherry tomatoes';
 
-      if (/\\s+or\\s+/i.test(query)) {
-        query = query.split(/\\s+or\\s+/i)[0].trim();
+      if (/\s+or\s+/i.test(query)) {
+        query = query.split(/\s+or\s+/i)[0].trim();
       }
 
       return query;
@@ -129,7 +131,7 @@ function buildWooliesScript(items) {
       const unit = normaliseUnit(item.unit);
       const name = String(item.name || '').toLowerCase();
       const combined = name + ' ' + unit;
-      const explicit = combined.match(/\\b(\\d+(?:\\.\\d+)?)\\s*(kg|g|l|ml)\\b/i);
+      const explicit = combined.match(/\b(\d+(?:\.\d+)?)\s*(kg|g|l|ml)\b/i);
 
       if (explicit) {
         return { value: Number(explicit[1]), unit: explicit[2].toLowerCase() };
@@ -153,7 +155,7 @@ function buildWooliesScript(items) {
     function productMeasure(product) {
       const text =
         (String(product.PackageSize || '') + ' ' + String(product.DisplayName || product.Name || '')).toLowerCase();
-      const match = text.match(/\\b(\\d+(?:\\.\\d+)?)\\s*(kg|g|l|ml)\\b/i);
+      const match = text.match(/\b(\d+(?:\.\d+)?)\s*(kg|g|l|ml)\b/i);
       if (!match) return null;
 
       const value = Number(match[1]);
@@ -165,20 +167,25 @@ function buildWooliesScript(items) {
       const request = requestText(item);
       const text = productText(product);
 
-      if (/\\bbaby\\s+(?:roma\\s+)?tomatoes?\\b/.test(request)) {
-        if (!/\\btomato(?:es)?\\b/.test(text)) return true;
-        if (!/\\b(cherry|grape|cocktail|solanato|mini)\\b/.test(text)) return true;
-        if (/\\b(mutti|whole|diced|crushed|peeled|passata|paste|sauce|canned|tinned|tin|can|jar)\\b/.test(text)) return true;
-      } else if (/\\btomato(?:es)?\\b/.test(request)) {
-        if (/\\b(mutti|diced|crushed|peeled|passata|paste|sauce|canned|tinned|tin|can|jar)\\b/.test(text)) return true;
+      if (isBabyTomatoRequest(item)) {
+        const freshStyle = ['cherry', 'grape', 'cocktail', 'solanato', 'mini'].some(v => text.includes(v));
+        const processed = ['mutti', 'whole peeled', 'diced', 'crushed', 'peeled', 'passata', 'paste', 'sauce', 'canned', 'tinned', ' tin ', ' can ', ' jar ']
+          .some(v => text.includes(v));
+        if (!text.includes('tomato')) return true;
+        if (!freshStyle) return true;
+        if (processed) return true;
+      } else if (request.includes('tomato')) {
+        const processed = ['mutti', 'diced', 'crushed', 'peeled', 'passata', 'paste', 'sauce', 'canned', 'tinned']
+          .some(v => text.includes(v));
+        if (processed) return true;
       }
 
-      if (/\\bcarrots?\\b/.test(request) && !/\\bbaby\\b/.test(request) && /\\bbaby\\s+carrots?\\b/.test(text)) {
+      if (request.includes('carrot') && !request.includes('baby') && text.includes('baby carrot')) {
         return true;
       }
 
-      if (/\\bbread\\b/.test(request) && /\\b(mix|flour|crumb|crumbs|breadcrumbs)\\b/.test(text)) {
-        return true;
+      if (request.includes('bread')) {
+        if (['bread mix', 'flour', 'breadcrumb', 'bread crumb'].some(v => text.includes(v))) return true;
       }
 
       const wanted = requestedMeasure(item);
@@ -198,7 +205,7 @@ function buildWooliesScript(items) {
       let query = cleanQuery(item);
       const measure = requestedMeasure(item);
 
-      if (measure) {
+      if (measure && !isBabyTomatoRequest(item)) {
         const token = String(measure.value) + measure.unit;
         if (!query.toLowerCase().includes(token.toLowerCase())) {
           query += ' ' + token;
@@ -224,25 +231,25 @@ function buildWooliesScript(items) {
 
       const request = requestText(item);
 
-      if (/\\bbaby\\s+(?:roma\\s+)?tomatoes?\\b/.test(request)) {
-        if (/\\b(cherry|grape|cocktail|solanato|mini)\\b/.test(text)) score += 140;
+      if (isBabyTomatoRequest(item)) {
+        if (['cherry', 'grape', 'cocktail', 'solanato', 'mini'].some(v => text.includes(v))) score += 160;
       }
 
-      if (/\\bcarrots?\\b/.test(request) && !/\\bbaby\\b/.test(request) && !/\\bbaby\\b/.test(text)) {
+      if (request.includes('carrot') && !request.includes('baby') && !text.includes('baby')) {
         score += 35;
       }
 
-      if (/\\bwhite\\s+bread\\b/.test(request) && /\\bwhite\\b/.test(text) && /\\b(bread|loaf)\\b/.test(text)) {
+      if (request.includes('white bread') && text.includes('white') && (text.includes('bread') || text.includes('loaf'))) {
         score += 60;
       }
 
-      if (/\\bgarlic\\s+bread\\b/.test(request) && /\\bgarlic\\b/.test(text) && /\\bbread\\b/.test(text)) {
+      if (request.includes('garlic bread') && text.includes('garlic') && text.includes('bread')) {
         score += 70;
       }
 
       const wanted = requestedMeasure(item);
       const actual = productMeasure(product);
-      if (wanted) {
+      if (wanted && !isBabyTomatoRequest(item)) {
         if (!actual) {
           score -= 60;
         } else {
@@ -257,7 +264,7 @@ function buildWooliesScript(items) {
         }
       }
 
-      if (/\\b(large|big|family|largest|biggest)\\b/i.test(request) && actual?.base) {
+      if (/\b(large|big|family|largest|biggest)\b/i.test(request) && actual?.base) {
         if (/weet[- ]?bix|weetabix/.test(query.toLowerCase())) {
           if (actual.base >= 1000 && actual.unit !== 'ml' && actual.unit !== 'l') score += 80;
           else if (actual.base >= 700) score += 35;
@@ -303,28 +310,21 @@ function buildWooliesScript(items) {
           GroupEdmVariants: false,
           EnableAdReRanking: false
         })
-      }, 12000);
+      }, 15000);
 
-      if (!response.ok) {
-        throw new Error('Search failed (' + response.status + ')');
-      }
+      if (!response.ok) throw new Error('Search failed (' + response.status + ')');
 
       const data = await response.json();
       const products = [];
-
       for (const group of data?.Products || []) {
-        for (const product of group?.Products || []) {
-          products.push(product);
-        }
+        for (const product of group?.Products || []) products.push(product);
       }
-
       return products;
     }
 
     function safeQuantity(item) {
       let wanted = Number(item.qty ?? item.quantity ?? 1);
       if (!Number.isFinite(wanted) || wanted <= 0) wanted = 1;
-
       if (requestedMeasure(item)) return 1;
       if (wanted > 12) return 1;
 
@@ -332,14 +332,13 @@ function buildWooliesScript(items) {
       if (/^(pack|packet|box|bag|carton|bottle|tin|can|loaf|jar)/.test(unit)) {
         return Math.max(1, Math.min(6, Math.round(wanted)));
       }
-
       if (wanted > 6) return 1;
       return Math.max(1, Math.min(6, Math.round(wanted)));
     }
 
-    function trolleyBody(rows) {
+    function trolleyBody(row) {
       return {
-        items: rows.map(row => ({
+        items: [{
           stockcode: Number(row.product.Stockcode),
           quantity: safeQuantity(row.item),
           source: row.product.Source || 'SearchServiceSearchProducts',
@@ -349,38 +348,41 @@ function buildWooliesScript(items) {
           offerId: row.product.OfferId ?? null,
           profileId: null,
           priceLevel: null
-        }))
+        }]
       };
     }
 
-    async function addRows(rows) {
+    async function addRow(row) {
       try {
         const response = await fetchWithTimeout('/api/v3/ui/trolley/update', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Accept': '*/*'
+            'Accept': 'application/json, text/plain, */*'
           },
           credentials: 'same-origin',
-          body: JSON.stringify(trolleyBody(rows))
-        }, 12000);
+          body: JSON.stringify(trolleyBody(row))
+        }, 15000);
 
-        if (!response.ok) {
-          return { ok: false, detail: 'HTTP ' + response.status };
+        const raw = await response.text();
+        let body = null;
+        try { body = raw ? JSON.parse(raw) : null; } catch (_) {}
+
+        if (!response.ok) return { ok: false, detail: 'HTTP ' + response.status };
+        if (body && (body.Success === false || body.success === false)) {
+          return { ok: false, detail: 'Woolies rejected the cart update' };
         }
 
-        let body = null;
-        try {
-          body = await response.clone().json();
-        } catch (_) {}
-
-        return { ok: true, body };
+        return { ok: true };
       } catch (error) {
         return { ok: false, detail: error?.message || 'request failed' };
       }
     }
 
     try {
+      post('WOOLIES_SCRIPT_STARTED', 'David is running in the Woolies cart.');
+      setProgress('Starting your Woolies shop…');
+
       if (!Array.isArray(items) || !items.length) {
         setProgress('There is nothing to add.');
         post('WOOLIES_DONE', 'Nothing to add.', { success: false, added: 0 });
@@ -399,7 +401,7 @@ function buildWooliesScript(items) {
         let products = [];
         try {
           products = await searchProducts(item);
-        } catch (error) {
+        } catch (_) {
           searchFailed.push(item.name);
           continue;
         }
@@ -409,7 +411,6 @@ function buildWooliesScript(items) {
           .sort((a, b) => b.score - a.score || Number(a.product.Price || 9999) - Number(b.product.Price || 9999));
 
         const best = ranked[0];
-
         if (!confidentMatch(best) || !best.product.Stockcode) {
           unmatched.push(item.name);
           continue;
@@ -423,7 +424,7 @@ function buildWooliesScript(items) {
 
         usedStockcodes.add(stockcode);
         selected.push({ item, product: best.product });
-        await sleep(120);
+        await sleep(150);
       }
 
       let added = 0;
@@ -433,18 +434,17 @@ function buildWooliesScript(items) {
         const row = selected[i];
         setProgress('Adding ' + (i + 1) + ' of ' + selected.length + ': ' + row.item.name);
 
-        const result = await addRows([row]);
+        const result = await addRow(row);
         if (result.ok) added += 1;
         else failed += 1;
-
-        await sleep(180);
+        await sleep(250);
       }
 
       const parts = [String(added) + ' products added.'];
       if (unmatched.length) parts.push('Could not confidently match: ' + unmatched.join(', ') + '.');
       if (searchFailed.length) parts.push('Search failed for: ' + searchFailed.join(', ') + '.');
       if (failed) parts.push(String(failed) + ' products failed to add.');
-      parts.push('Refreshing your cart.');
+      if (added > 0) parts.push('Refreshing your cart.');
 
       const summary = parts.join(' ');
       setProgress(summary);
@@ -471,28 +471,40 @@ export default function App() {
   const webRef = useRef(null);
   const pendingItemsRef = useRef(null);
   const injectedForRunRef = useRef(false);
+  const redirectAttemptsRef = useRef(0);
+  const injectTimerRef = useRef(null);
   const [url, setUrl] = useState(DAVID_URL);
   const [status, setStatus] = useState('David');
 
   const isWoolies = useMemo(() => url.includes('woolworths.com.au'), [url]);
 
+  function clearInjectTimer() {
+    if (injectTimerRef.current) {
+      clearTimeout(injectTimerRef.current);
+      injectTimerRef.current = null;
+    }
+  }
+
   function goDavid() {
+    clearInjectTimer();
     pendingItemsRef.current = null;
     injectedForRunRef.current = false;
+    redirectAttemptsRef.current = 0;
     setStatus('David');
     setUrl(DAVID_URL + '&t=' + Date.now());
   }
 
   function goWoolies() {
+    clearInjectTimer();
     pendingItemsRef.current = null;
     injectedForRunRef.current = false;
+    redirectAttemptsRef.current = 0;
     setStatus('Woolies cart');
     setUrl(WOOLIES_CART + '?helloDavid=' + Date.now());
   }
 
   function handleMessage(event) {
     let message;
-
     try {
       message = JSON.parse(event.nativeEvent.data);
     } catch (_) {
@@ -506,11 +518,17 @@ export default function App() {
         return;
       }
 
+      clearInjectTimer();
       pendingItemsRef.current = items;
       injectedForRunRef.current = false;
+      redirectAttemptsRef.current = 0;
       setStatus('Opening Woolies cart…');
-
       setUrl(WOOLIES_CART + '?helloDavid=' + Date.now());
+      return;
+    }
+
+    if (message?.type === 'WOOLIES_SCRIPT_STARTED') {
+      setStatus('David is building your Woolies cart…');
       return;
     }
 
@@ -527,8 +545,8 @@ export default function App() {
       if (added > 0) {
         setStatus('Cart ready — ' + added + ' added');
         setTimeout(() => {
-          setUrl(WOOLIES_CART + '?helloDavidDone=' + Date.now());
-        }, 350);
+          webRef.current?.injectJavaScript('location.reload(); true;');
+        }, 900);
       } else {
         setStatus(message.message || 'Nothing was added');
       }
@@ -540,14 +558,50 @@ export default function App() {
     if (!loadedUrl.includes('woolworths.com.au')) return;
     if (!pendingItemsRef.current || injectedForRunRef.current) return;
 
-    injectedForRunRef.current = true;
-    setStatus('Matching your Woolies products…');
-    webRef.current?.injectJavaScript(buildWooliesScript(pendingItemsRef.current));
+    const onCartPage = loadedUrl.includes('/shop/cart');
+
+    if (!onCartPage) {
+      setStatus('Waiting for Woolies cart…');
+      if (redirectAttemptsRef.current < 2) {
+        redirectAttemptsRef.current += 1;
+        setTimeout(() => {
+          if (pendingItemsRef.current && !injectedForRunRef.current) {
+            setUrl(WOOLIES_CART + '?helloDavidRetry=' + Date.now());
+          }
+        }, 500);
+      }
+      return;
+    }
+
+    clearInjectTimer();
+    setStatus('Cart loaded — starting David…');
+
+    injectTimerRef.current = setTimeout(() => {
+      if (!pendingItemsRef.current || injectedForRunRef.current) return;
+
+      injectedForRunRef.current = true;
+      setStatus('Matching your Woolies products…');
+
+      webRef.current?.injectJavaScript(`
+        try {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'WOOLIES_STATUS',
+            message: 'David connected to the Woolies cart…'
+          }));
+        } catch (_) {}
+        true;
+      `);
+
+      setTimeout(() => {
+        webRef.current?.injectJavaScript(buildWooliesScript(pendingItemsRef.current));
+      }, 180);
+    }, 900);
   }
 
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="dark-content" />
+
       <View style={styles.header}>
         <View style={styles.brandWrap}>
           <Text style={styles.brand}>HELLO DAVID</Text>
