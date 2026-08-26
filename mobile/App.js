@@ -94,6 +94,10 @@ function buildWooliesScript(items) {
         [/\\bweet bix\\b/gi, 'Weet-Bix']
       ];
       for (const [pattern, replacement] of aliases) query = query.replace(pattern, replacement);
+
+      // When someone says "X or Y", use the first acceptable option as the default search.
+      // This is safer than asking Woolworths to interpret the whole phrase as one product.
+      if (/\\s+or\\s+/i.test(query)) query = query.split(/\\s+or\\s+/i)[0].trim();
       return query;
     }
 
@@ -150,6 +154,40 @@ function buildWooliesScript(items) {
       return /\\b(large|big|family|largest|biggest)\\b/i.test(String(item.name || '') + ' ' + String(item.unit || ''));
     }
 
+    function requestText(item) {
+      return (String(item.name || '') + ' ' + String(item.unit || '')).toLowerCase();
+    }
+
+    function isHardMismatch(item, product) {
+      const request = requestText(item);
+      const text = productText(product).toLowerCase();
+
+      // Fresh produce should never silently turn into canned / processed produce.
+      if (/\\b(tomato|tomatoes|toms)\\b/.test(request) && !/\\b(tin|tinned|can|canned|diced|crushed|passata|paste|sauce)\\b/.test(request)) {
+        if (/\\b(tin|tinned|can|canned|diced|crushed|peeled|passata|paste|sauce)\\b/.test(text)) return true;
+      }
+
+      // If "baby" was requested it needs to survive the match; if it wasn't, don't invent it for carrots.
+      if (/\\bbaby\\s+(tomato|tomatoes|toms)\\b/.test(request) && !/\\bbaby\\b/.test(text)) return true;
+      if (/\\bcarrots?\\b/.test(request) && !/\\bbaby\\b/.test(request) && /\\bbaby\\s+carrots?\\b/.test(text)) return true;
+
+      // Bread requests must resolve to edible bread, not ingredients.
+      if (/\\bbread\\b/.test(request) && /\\b(mix|flour|crumb|crumbs|breadcrumbs|bread crumbs)\\b/.test(text)) return true;
+
+      // An explicit pack size is a requirement, not a suggestion. Reject wildly wrong sizes.
+      const wantedMeasure = requestedMeasure(item);
+      const actualMeasure = productMeasure(product);
+      if (wantedMeasure && actualMeasure) {
+        const wantedBase = toBaseMeasure(wantedMeasure.value, wantedMeasure.unit);
+        if (wantedBase && actualMeasure.base) {
+          const ratio = actualMeasure.base / wantedBase;
+          if (ratio < 0.60 || ratio > 1.55) return true;
+        }
+      }
+
+      return false;
+    }
+
     function buildSearchQuery(item) {
       let query = cleanQuery(item.name);
       const measure = requestedMeasure(item);
@@ -165,7 +203,8 @@ function buildWooliesScript(items) {
       const wantedWords = words(query);
       const text = productText(product).toLowerCase();
       const matchedWords = wantedWords.filter(w => text.includes(w)).length;
-      let score = 0;
+      const invalid = isHardMismatch(item, product);
+      let score = invalid ? -10000 : 0;
 
       for (const word of wantedWords) if (text.includes(word)) score += 14;
       if (query && text.includes(query.toLowerCase())) score += 40;
@@ -174,42 +213,53 @@ function buildWooliesScript(items) {
       const packSize = unit.match(/(?:pack|packet|box|bag)\\s+of\\s+(\\d+)/i)?.[1];
       if (packSize) {
         const packPattern = new RegExp('(?:\\\\b' + packSize + '\\\\s*(?:pack|pk|x)\\\\b|\\\\bpack\\\\s*of\\\\s*' + packSize + '\\\\b)', 'i');
-        if (packPattern.test(text)) score += 40;
+        if (packPattern.test(text)) score += 50;
       }
 
       const wantedMeasure = requestedMeasure(item);
       const actualMeasure = productMeasure(product);
-      if (wantedMeasure && actualMeasure) {
-        const wantedBase = toBaseMeasure(wantedMeasure.value, wantedMeasure.unit);
-        if (wantedBase && actualMeasure.base) {
-          const ratio = actualMeasure.base / wantedBase;
-          if (ratio >= 0.92 && ratio <= 1.08) score += 75;
-          else if (ratio >= 0.75 && ratio <= 1.25) score += 30;
-          else if (ratio < 0.55 || ratio > 1.8) score -= 35;
+      if (wantedMeasure) {
+        if (!actualMeasure) {
+          score -= 60;
+        } else {
+          const wantedBase = toBaseMeasure(wantedMeasure.value, wantedMeasure.unit);
+          if (wantedBase && actualMeasure.base) {
+            const ratio = actualMeasure.base / wantedBase;
+            if (ratio >= 0.95 && ratio <= 1.05) score += 140;
+            else if (ratio >= 0.85 && ratio <= 1.15) score += 85;
+            else if (ratio >= 0.70 && ratio <= 1.30) score += 25;
+            else score -= 250;
+          }
         }
       }
+
+      const request = requestText(item);
+      if (/\\bcarrots?\\b/.test(request) && !/\\bbaby\\b/.test(request) && !/\\bbaby\\b/.test(text)) score += 30;
+      if (/\\bbaby\\s+(tomato|tomatoes|toms)\\b/.test(request) && /\\b(baby|cherry|grape)\\b/.test(text)) score += 65;
+      if (/\\bwhite\\s+bread\\b/.test(request) && /\\bwhite\\b/.test(text) && /\\bbread|loaf\\b/.test(text)) score += 55;
+      if (/\\bgarlic\\s+bread\\b/.test(request) && /\\bgarlic\\b/.test(text) && /\\bbread\\b/.test(text)) score += 65;
 
       if (isLargePreference(item) && actualMeasure?.base) {
         const name = cleanQuery(item.name).toLowerCase();
         if (/weet[- ]?bix|weetabix/.test(name)) {
-          if (actualMeasure.base >= 1000 && actualMeasure.unit !== 'ml' && actualMeasure.unit !== 'l') score += 55;
-          else if (actualMeasure.base >= 700) score += 25;
-          else score -= 18;
+          if (actualMeasure.base >= 1000 && actualMeasure.unit !== 'ml' && actualMeasure.unit !== 'l') score += 75;
+          else if (actualMeasure.base >= 700) score += 35;
+          else score -= 40;
         } else {
           score += Math.min(25, actualMeasure.base / 100);
         }
       }
 
       const explicitlyWantsSpecial = /special|sale/i.test(item.name || '') || /special|sale/i.test(unit);
-      if (product.IsOnSpecial) score += explicitlyWantsSpecial ? 30 : 8;
+      if (product.IsOnSpecial) score += explicitlyWantsSpecial ? 30 : 6;
       else if (explicitlyWantsSpecial) score -= 8;
       if (product.IsAvailable === false || product.IsInStock === false) score -= 200;
 
-      return { product, score, matchedWords, wantedWords };
+      return { product, score, matchedWords, wantedWords, invalid };
     }
 
     function confidentMatch(ranked) {
-      if (!ranked) return false;
+      if (!ranked || ranked.invalid) return false;
       const count = ranked.wantedWords.length;
       if (!count) return false;
       const needed = count === 1 ? 1 : Math.min(2, count);
@@ -227,7 +277,7 @@ function buildWooliesScript(items) {
           IsSpecial: false,
           Location: '/shop/search/products?searchTerm=' + encodeURIComponent(query),
           PageNumber: 1,
-          PageSize: 18,
+          PageSize: 30,
           SearchTerm: query,
           SortType: 'TraderRelevance',
           IsHideEverydayMarketProducts: false,
@@ -269,11 +319,11 @@ function buildWooliesScript(items) {
         items: rows.map(row => ({
           stockcode: Number(row.product.Stockcode),
           quantity: Math.max(1, Math.min(12, Number(row.quantity) || 1)),
-          source: 'SearchResults',
-          diagnostics: '0',
+          source: row.product.Source || 'SearchServiceSearchProducts',
+          diagnostics: row.product.Diagnostics || '0',
           searchTerm: buildSearchQuery(row.item),
           evaluateRewardPoints: false,
-          offerId: null,
+          offerId: row.product.OfferId ?? null,
           profileId: null,
           priceLevel: null
         }))
@@ -357,7 +407,6 @@ function buildWooliesScript(items) {
         if (batchOk) {
           added += batchRows.length;
         } else {
-          // Salvage a partial basket rather than abandoning the whole shop.
           for (const row of batchRows) {
             const rowOk = await addRows([row]);
             if (rowOk) added += 1;
