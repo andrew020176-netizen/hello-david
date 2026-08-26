@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Hello David</title>
-  <link rel="stylesheet" href="styles.css?v=2" />
+  <link rel="stylesheet" href="styles.css?v=3" />
 </head>
 <body>
   <main class="shell">
@@ -26,6 +26,12 @@
         </div>
       </div>
 
+      <div class="retailer-choice" aria-label="Preferred supermarket">
+        <span class="retailer-label">I shop at</span>
+        <button type="button" class="retailer-btn active" data-retailer="Woolworths">Woolworths</button>
+        <button type="button" class="retailer-btn" data-retailer="Coles">Coles</button>
+      </div>
+
       <div class="voice-first-wrap">
         <div class="input-actions voice-first-actions" role="group" aria-label="Shopping list actions">
           <button id="micBtn" class="primary-btn voice-primary">🎙 Speak</button>
@@ -33,7 +39,6 @@
         </div>
         <div class="voice-static-hint">Stop and come back anytime — this shop stays open. Share it with someone else and they can add too.</div>
 
-        <!-- Kept only for the working processing layer. The transcript is deliberately not shown to the user. -->
         <textarea id="groceryInput" class="technical-only" aria-hidden="true" tabindex="-1"></textarea>
         <div id="speechStatus" class="technical-only" aria-live="polite"></div>
       </div>
@@ -55,11 +60,11 @@
       <section class="panel">
         <div class="section-head">
           <div>
-            <div class="eyebrow">COMPARE</div>
-            <h2>Best basket</h2>
+            <div class="eyebrow">DAVID’S PICKS</div>
+            <h2 id="picksHeading">Ready for Woolworths</h2>
           </div>
         </div>
-        <div class="notice">Connecting live retailer matching…</div>
+        <div class="notice">Tell David what you need and he’ll choose sensible products, looking for specials and better value.</div>
         <div id="basketResults" class="basket-results"></div>
       </section>
     </section>
@@ -91,12 +96,10 @@
     </div>
   </template>
 
-  <!-- Legacy browser speech recognition stays disabled. -->
   <script>
     try { Object.defineProperty(window, 'SpeechRecognition', { value: undefined, configurable: true }); } catch (_) { window.SpeechRecognition = undefined; }
     try { Object.defineProperty(window, 'webkitSpeechRecognition', { value: undefined, configurable: true }); } catch (_) { window.webkitSpeechRecognition = undefined; }
 
-    // Route the existing recorder to the dedicated Hello David Supabase project.
     (() => {
       const oldAudioEndpoint = 'https://oobquipkeobfnotyynjr.supabase.co/functions/v1/hello-david-process-audio';
       const newAudioEndpoint = 'https://wfhgyunfvdyxwtggntpc.supabase.co/functions/v1/hello-david-process-audio';
@@ -108,10 +111,9 @@
     })();
   </script>
   <script src="app.js?v=4"></script>
-  <script src="basket-live-only.js?v=1"></script>
   <script src="audio-recorder.js?v=6"></script>
   <script src="shared-shop.js?v=2"></script>
-  <script src="price-compare.js?v=2"></script>
-  <script src="woolies-handoff.js?v=2"></script>
+  <script src="price-compare.js?v=3"></script>
+  <script src="woolies-handoff.js?v=3"></script>
 </body>
 </html>
