@@ -2,6 +2,7 @@
   "expo": {
     "name": "Stuff the Shopping",
     "slug": "stuff-the-shopping",
+    "scheme": "stuffshopping",
     "version": "0.1.0",
     "orientation": "portrait",
     "ios": {
