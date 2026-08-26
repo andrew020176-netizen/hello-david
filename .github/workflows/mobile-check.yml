@@ -9,6 +9,7 @@ on:
   pull_request:
     paths:
       - 'mobile/**'
+      - '.github/workflows/mobile-check.yml'
 
 jobs:
   expo-bundle:
@@ -24,4 +25,10 @@ jobs:
           cache: npm
           cache-dependency-path: mobile/package.json
       - run: npm install
+      - name: Validate release assets and config
+        run: |
+          test -s assets/icon.png
+          test -s assets/adaptive-icon.png
+          node -e "const fs=require('fs'); for (const f of ['app.json','eas.json']) JSON.parse(fs.readFileSync(f,'utf8'));"
+          npx expo config --type public > /dev/null
       - run: npx expo export --platform ios --output-dir dist-check
