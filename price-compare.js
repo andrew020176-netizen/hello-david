@@ -1,12 +1,17 @@
 (() => {
   const ENDPOINT = "https://wfhgyunfvdyxwtggntpc.supabase.co/functions/v1/hello-david-price-compare";
+  const RETAILER_KEY = "helloDavid.retailer.v1";
   const list = document.getElementById("itemsList");
   const out = document.getElementById("basketResults");
   const notice = document.querySelector(".notice");
+  const heading = document.getElementById("picksHeading");
+  const retailerButtons = [...document.querySelectorAll("[data-retailer]")];
   if (!list || !out) return;
 
   let timer = null;
   let requestId = 0;
+  let retailer = localStorage.getItem(RETAILER_KEY) || "Woolworths";
+  if (!['Woolworths', 'Coles'].includes(retailer)) retailer = 'Woolworths';
 
   function readItems() {
     return [...document.querySelectorAll(".item-row")]
@@ -26,120 +31,119 @@
     return Number.isFinite(Number(value)) ? `$${Number(value).toFixed(2)}` : "—";
   }
 
-  function card(title, price, detail, best = false) {
+  function setRetailer(next, shouldRefresh = true) {
+    retailer = ['Woolworths', 'Coles'].includes(next) ? next : 'Woolworths';
+    localStorage.setItem(RETAILER_KEY, retailer);
+    retailerButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.retailer === retailer));
+    if (heading) heading.textContent = `Ready for ${retailer}`;
+    window.dispatchEvent(new CustomEvent('hello-david-retailer-change', { detail: { retailer } }));
+    if (shouldRefresh) schedule(0);
+  }
+
+  function pickCard(requested, offer) {
     const div = document.createElement("div");
-    div.className = `basket-card${best ? " best" : ""}`;
+    div.className = `basket-card${offer ? '' : ' pick-missing'}`;
+
+    const request = document.createElement('div');
+    request.className = 'pick-request';
+    request.textContent = requested;
+    div.appendChild(request);
 
     const top = document.createElement("div");
     top.className = "basket-top";
 
     const name = document.createElement("div");
     name.className = "basket-name";
-    name.textContent = title;
+    name.textContent = offer?.productName || `David will confirm this in ${retailer}`;
+
+    if (offer?.onSpecial) {
+      const badge = document.createElement('span');
+      badge.className = 'pick-special';
+      badge.textContent = 'SPECIAL';
+      name.appendChild(badge);
+    }
 
     const priceEl = document.createElement("div");
     priceEl.className = "basket-price";
-    priceEl.textContent = price;
-
-    const detailEl = document.createElement("div");
-    detailEl.className = "basket-detail";
-    detailEl.textContent = detail;
+    priceEl.textContent = offer ? money(offer.price) : "—";
 
     top.append(name, priceEl);
-    div.append(top, detailEl);
+    div.appendChild(top);
+
+    const detail = document.createElement('div');
+    detail.className = 'basket-detail';
+    if (offer) {
+      const bits = [];
+      if (offer.onSpecial && Number.isFinite(Number(offer.wasPrice)) && Number(offer.wasPrice) > Number(offer.price)) {
+        bits.push(`was ${money(offer.wasPrice)}`);
+      }
+      if (offer.unitLabel) bits.push(String(offer.unitLabel));
+      bits.push('David picked the closest sensible match');
+      detail.textContent = bits.join(' · ');
+    } else {
+      detail.textContent = retailer === 'Woolworths'
+        ? 'David will make a final match when he opens Woolworths rather than guess.'
+        : 'No reliable live match yet — David will not substitute blindly.';
+    }
+    div.appendChild(detail);
     return div;
   }
 
   function renderLoading() {
     out.innerHTML = "";
-    if (notice) notice.textContent = "Finding reliable matches and live prices…";
+    if (notice) notice.textContent = `Choosing sensible ${retailer} products and looking for specials…`;
   }
 
-  function renderUnavailable(message = "Live retailer prices are temporarily unavailable. Your shopping list is unaffected.") {
+  function renderUnavailable() {
     out.innerHTML = "";
-    out.appendChild(card("Live prices unavailable", "—", "No basket total is shown until live prices can be verified."));
-    if (notice) notice.textContent = message;
-  }
-
-  function renderNotConfigured() {
-    out.innerHTML = "";
-    out.appendChild(card("Live comparison ready", "—", "The comparison engine is connected. Live retailer access still needs to be activated."));
-    if (notice) notice.textContent = "The comparison engine is ready. Live retailer data is the final connection.";
+    if (notice) {
+      notice.textContent = `Live ${retailer} product data is temporarily unavailable. Your shop is safe — David will not invent prices or products.`;
+    }
   }
 
   function renderResults(result) {
     out.innerHTML = "";
 
-    if (!result?.configured) {
-      renderNotConfigured();
-      return;
-    }
-
-    if (result?.providerAvailable === false) {
-      renderUnavailable("Live retailer data is temporarily unavailable. No stale or estimated prices are being shown.");
-      return;
-    }
-
-    const itemCount = readItems().length;
-    const retailers = Array.isArray(result.retailers) ? result.retailers : [];
-    const complete = retailers.filter(r => !r.missing?.length && Number(r.matched) === itemCount && itemCount > 0);
-    const bestComplete = complete.length
-      ? complete.reduce((a, b) => Number(a.total) <= Number(b.total) ? a : b)
-      : null;
-
-    for (const retailer of retailers) {
-      const missing = Array.isArray(retailer.missing) ? retailer.missing : [];
-      const matched = Number(retailer.matched || 0);
-      const isComplete = itemCount > 0 && matched === itemCount && missing.length === 0;
-      const detail = `${matched}/${itemCount} reliable matches${missing.length ? ` · No reliable match: ${missing.join(", ")}` : ""}`;
-
-      out.appendChild(card(
-        `${retailer.retailer}${bestComplete?.retailer === retailer.retailer ? " · Best complete basket" : ""}`,
-        isComplete ? money(retailer.total) : "—",
-        detail,
-        bestComplete?.retailer === retailer.retailer
-      ));
-    }
-
-    if (result.split) {
-      const split = result.split;
-      const missing = Array.isArray(split.missing) ? split.missing : [];
-      const selections = Array.isArray(split.selections) ? split.selections : [];
-      const counts = {};
-
-      for (const row of selections) {
-        const retailer = row?.offer?.retailer || "Other";
-        counts[retailer] = (counts[retailer] || 0) + 1;
-      }
-
-      const breakdown = Object.entries(counts).map(([r, n]) => `${n} from ${r}`).join(" · ") || "No reliable product matches";
-      out.appendChild(card(
-        "Cheapest item-by-item",
-        missing.length ? "—" : money(split.total),
-        `${breakdown}${missing.length ? ` · No reliable match: ${missing.join(", ")}` : ""}`
-      ));
-    }
-
-    if (!retailers.length) {
+    if (!result?.configured || result?.providerAvailable === false) {
       renderUnavailable();
       return;
     }
 
+    const rows = Array.isArray(result.items) ? result.items : [];
+    let matched = 0;
+    let specials = 0;
+
+    for (const row of rows) {
+      const offers = Array.isArray(row?.offers) ? row.offers : [];
+      const offer = offers
+        .filter(o => o?.retailer === retailer)
+        .sort((a, b) => Number(b.score || 0) - Number(a.score || 0) || Number(a.price || 9999) - Number(b.price || 9999))[0] || null;
+
+      if (offer) matched += 1;
+      if (offer?.onSpecial) specials += 1;
+      out.appendChild(pickCard(row?.item?.name || 'Item', offer));
+    }
+
+    if (!rows.length) {
+      if (notice) notice.textContent = 'Add something to the shop and David will choose the product.';
+      return;
+    }
+
     if (notice) {
-      const hasComplete = complete.length > 0;
-      notice.textContent = hasComplete
-        ? `Live product matching via ${result.provider || "retailer data"}. Review the chosen products before purchase.`
-        : "Live prices found for some items, but no complete basket is reliable yet.";
+      const bits = [`David found ${matched}/${rows.length} reliable ${retailer} matches`];
+      if (specials) bits.push(`${specials} ${specials === 1 ? 'is' : 'are'} on special`);
+      if (matched < rows.length) bits.push('unmatched items will be confirmed rather than guessed');
+      notice.textContent = `${bits.join(' · ')}.`;
     }
   }
 
-  async function compare() {
+  async function chooseProducts() {
     const items = readItems();
     const id = ++requestId;
 
     if (!items.length) {
       out.innerHTML = "";
-      if (notice) notice.textContent = "Add an item and David will compare live prices.";
+      if (notice) notice.textContent = `Add an item and David will choose a sensible ${retailer} product.`;
       return;
     }
 
@@ -151,15 +155,15 @@
       const response = await fetch(ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items }),
+        body: JSON.stringify({ items, retailer }),
         signal: controller.signal
       });
       const result = await response.json().catch(() => ({}));
       if (id !== requestId) return;
-      if (!response.ok || !result?.success) throw new Error(result?.error || "Price comparison failed.");
+      if (!response.ok || !result?.success) throw new Error(result?.error || "Product matching failed.");
       renderResults(result);
     } catch (error) {
-      console.error("Hello David price comparison error", error);
+      console.error("Hello David product matching error", error);
       if (id !== requestId) return;
       renderUnavailable();
     } finally {
@@ -167,15 +171,18 @@
     }
   }
 
-  function schedule() {
+  function schedule(delay = 700) {
     clearTimeout(timer);
-    timer = setTimeout(compare, 900);
+    timer = setTimeout(chooseProducts, delay);
   }
 
-  new MutationObserver(schedule).observe(list, { childList: true, subtree: true });
+  retailerButtons.forEach(btn => btn.addEventListener('click', () => setRetailer(btn.dataset.retailer)));
+
+  new MutationObserver(() => schedule()).observe(list, { childList: true, subtree: true });
   document.addEventListener("change", event => {
     if (event.target?.matches?.(".item-name, .item-qty")) schedule();
   });
 
-  if (readItems().length) schedule();
+  setRetailer(retailer, false);
+  if (readItems().length) schedule(0);
 })();
