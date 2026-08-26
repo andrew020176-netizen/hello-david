@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "Hello David",
-    "slug": "hello-david-mobile",
+    "name": "Stuff the Shopping",
+    "slug": "stuff-the-shopping",
     "version": "0.1.0",
     "orientation": "portrait",
     "ios": {
       "supportsTablet": false,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Hello David uses the microphone so you can speak your shopping list."
+        "NSMicrophoneUsageDescription": "Stuff the Shopping uses the microphone so you can speak your grocery list."
       }
     },
     "android": {
