@@ -93,7 +93,7 @@ function buildWooliesScript(items) {
     }
 
     function productText(product) {
-      return \`${'${'}product.DisplayName || product.Name || ''} ${'${'}product.Brand || ''} ${'${'}product.PackageSize || ''}\`.toLowerCase();
+      return String(product.DisplayName || product.Name || '') + ' ' + String(product.Brand || '') + ' ' + String(product.PackageSize || '');
     }
 
     function normaliseUnit(value) {
@@ -103,8 +103,7 @@ function buildWooliesScript(items) {
     function requestedMeasure(item) {
       const rawUnit = normaliseUnit(item.unit);
       const rawName = String(item.name || '').toLowerCase();
-      const combined = `${'${'}rawName} ${'${'}rawUnit}`;
-
+      const combined = rawName + ' ' + rawUnit;
       const explicit = combined.match(/\\b(\\d+(?:\\.\\d+)?)\\s*(kg|g|l|ml)\\b/i);
       if (explicit) return { value: Number(explicit[1]), unit: explicit[2].toLowerCase(), explicit: true };
 
@@ -112,8 +111,8 @@ function buildWooliesScript(items) {
       if (Number.isFinite(quantity) && quantity > 0) {
         if (/^(l|ml|kg|g)$/.test(rawUnit)) return { value: quantity, unit: rawUnit, explicit: true };
         if (/\\b(l|ml|kg|g)\\b/.test(rawUnit)) {
-          const u = rawUnit.match(/\\b(l|ml|kg|g)\\b/)?.[1];
-          if (u) return { value: quantity, unit: u, explicit: true };
+          const found = rawUnit.match(/\\b(l|ml|kg|g)\\b/);
+          if (found?.[1]) return { value: quantity, unit: found[1], explicit: true };
         }
       }
       return null;
@@ -127,21 +126,26 @@ function buildWooliesScript(items) {
     }
 
     function productMeasure(product) {
-      const text = `${'${'}product.PackageSize || ''} ${'${'}product.DisplayName || product.Name || ''}`.toLowerCase();
+      const text = (String(product.PackageSize || '') + ' ' + String(product.DisplayName || product.Name || '')).toLowerCase();
       const match = text.match(/\\b(\\d+(?:\\.\\d+)?)\\s*(kg|g|l|ml)\\b/i);
       if (!match) return null;
-      return { value: Number(match[1]), unit: match[2].toLowerCase(), base: toBaseMeasure(Number(match[1]), match[2].toLowerCase()) };
+      return {
+        value: Number(match[1]),
+        unit: match[2].toLowerCase(),
+        base: toBaseMeasure(Number(match[1]), match[2].toLowerCase())
+      };
     }
 
     function isLargePreference(item) {
-      return /\\b(large|big|family|largest|biggest)\\b/i.test(`${'${'}item.name || ''} ${'${'}item.unit || ''}`);
+      return /\\b(large|big|family|largest|biggest)\\b/i.test(String(item.name || '') + ' ' + String(item.unit || ''));
     }
 
     function buildSearchQuery(item) {
       let query = cleanQuery(item.name);
       const measure = requestedMeasure(item);
-      if (measure && !new RegExp(`\\b${'${'}measure.value}\\s*${'${'}measure.unit}\\b`, 'i').test(query)) {
-        query = `${'${'}query} ${'${'}measure.value}${'${'}measure.unit}`;
+      if (measure) {
+        const measurePattern = new RegExp('\\\\b' + measure.value + '\\\\s*' + measure.unit + '\\\\b', 'i');
+        if (!measurePattern.test(query)) query = query + ' ' + measure.value + measure.unit;
       }
       return query.trim();
     }
@@ -149,7 +153,7 @@ function buildWooliesScript(items) {
     function rankProduct(item, product) {
       const query = cleanQuery(item.name);
       const wantedWords = words(query);
-      const text = productText(product);
+      const text = productText(product).toLowerCase();
       const matchedWords = wantedWords.filter(w => text.includes(w)).length;
       let score = 0;
 
@@ -158,7 +162,10 @@ function buildWooliesScript(items) {
 
       const unit = normaliseUnit(item.unit);
       const packSize = unit.match(/(?:pack|packet|box|bag)\\s+of\\s+(\\d+)/i)?.[1];
-      if (packSize && new RegExp(`(?:\\b${'${'}packSize}\\s*(?:pack|pk|x)\\b|\\bpack\\s*of\\s*${'${'}packSize}\\b)`, 'i').test(text)) score += 40;
+      if (packSize) {
+        const packPattern = new RegExp('(?:\\\\b' + packSize + '\\\\s*(?:pack|pk|x)\\\\b|\\\\bpack\\\\s*of\\\\s*' + packSize + '\\\\b)', 'i');
+        if (packPattern.test(text)) score += 40;
+      }
 
       const wantedMeasure = requestedMeasure(item);
       const actualMeasure = productMeasure(product);
@@ -186,7 +193,6 @@ function buildWooliesScript(items) {
       const explicitlyWantsSpecial = /special|sale/i.test(item.name || '') || /special|sale/i.test(unit);
       if (product.IsOnSpecial) score += explicitlyWantsSpecial ? 30 : 8;
       else if (explicitlyWantsSpecial) score -= 8;
-
       if (product.IsAvailable === false || product.IsInStock === false) score -= 200;
 
       return { product, score, matchedWords, wantedWords };
@@ -209,7 +215,7 @@ function buildWooliesScript(items) {
         body: JSON.stringify({
           Filters: [],
           IsSpecial: false,
-          Location: `/shop/search/products?searchTerm=${'${'}encodeURIComponent(query)}`,
+          Location: '/shop/search/products?searchTerm=' + encodeURIComponent(query),
           PageNumber: 1,
           PageSize: 18,
           SearchTerm: query,
@@ -222,7 +228,7 @@ function buildWooliesScript(items) {
           EnableAdReRanking: false
         })
       });
-      if (!response.ok) throw new Error(`Search failed (${'${'}response.status})`);
+      if (!response.ok) throw new Error('Search failed (' + response.status + ')');
       const data = await response.json();
       const products = [];
       for (const group of data?.Products || []) {
@@ -235,16 +241,12 @@ function buildWooliesScript(items) {
       let wanted = Number(item.qty ?? item.quantity ?? 1);
       if (!Number.isFinite(wanted) || wanted <= 0) wanted = 1;
       const unit = normaliseUnit(item.unit);
-      const text = productText(product);
-
+      const text = productText(product).toLowerCase();
       if (requestedMeasure(item)) return 1;
-
       if (wanted > 12) return 1;
-      if (/^(pack|packet|box|bag|carton|bottle|tin|can|loaf|jar)/.test(unit)) {
-        return Math.max(1, Math.min(6, Math.round(wanted)));
-      }
+      if (/^(pack|packet|box|bag|carton|bottle|tin|can|loaf|jar)/.test(unit)) return Math.max(1, Math.min(6, Math.round(wanted)));
       if (wanted > 1 && /(roll|muffin|fillet|piece|item)s?/.test(unit)) {
-        const exactPack = new RegExp(`(?:\\b${'${'}wanted}\\s*(?:pack|pk|x)\\b|\\bpack\\s*of\\s*${'${'}wanted}\\b)`, 'i');
+        const exactPack = new RegExp('(?:\\\\b' + wanted + '\\\\s*(?:pack|pk|x)\\\\b|\\\\bpack\\\\s*of\\\\s*' + wanted + '\\\\b)', 'i');
         if (exactPack.test(text)) return 1;
         return Math.max(1, Math.min(12, Math.round(wanted)));
       }
@@ -265,7 +267,7 @@ function buildWooliesScript(items) {
 
       for (let index = 0; index < items.length; index++) {
         const item = items[index];
-        setProgress(`Matching ${'${'}index + 1} of ${'${'}items.length}: ${'${'}item.name}`);
+        setProgress('Matching ' + (index + 1) + ' of ' + items.length + ': ' + item.name);
         const products = await searchProducts(item);
         const ranked = products
           .map(product => rankProduct(item, product))
@@ -294,7 +296,7 @@ function buildWooliesScript(items) {
       let failed = 0;
       for (let i = 0; i < selected.length; i += 10) {
         const batchRows = selected.slice(i, i + 10);
-        setProgress(`Adding ${'${'}Math.min(i + 10, selected.length)} of ${'${'}selected.length} matched products…`);
+        setProgress('Adding ' + Math.min(i + 10, selected.length) + ' of ' + selected.length + ' matched products…');
         const body = {
           items: batchRows.map(row => ({
             stockcode: Number(row.product.Stockcode),
@@ -321,9 +323,9 @@ function buildWooliesScript(items) {
         await sleep(250);
       }
 
-      const parts = [`${'${'}added} products added.`];
-      if (unmatched.length) parts.push(`Skipped because David was not confident: ${'${'}unmatched.join(', ')}.`);
-      if (failed) parts.push(`${'${'}failed} matched products failed to add.`);
+      const parts = [String(added) + ' products added.'];
+      if (unmatched.length) parts.push('Skipped because David was not confident: ' + unmatched.join(', ') + '.');
+      if (failed) parts.push(String(failed) + ' matched products failed to add.');
       parts.push('Review your cart before checkout.');
       const summary = parts.join(' ');
       setProgress(summary);
@@ -334,7 +336,7 @@ function buildWooliesScript(items) {
         location.href = '/shop/cart';
       }
     } catch (error) {
-      const message = `Could not finish the Woolies shop: ${'${'}error?.message || 'unknown error'}.`;
+      const message = 'Could not finish the Woolies shop: ' + (error?.message || 'unknown error') + '.';
       console.error('Hello David mobile Woolies automation failed', error);
       setProgress(message);
       post('WOOLIES_DONE', message, { success: false });
@@ -400,9 +402,8 @@ export default function App() {
 
     if (message?.type === 'WOOLIES_AUTH_STATE') {
       if (!pendingItemsRef.current || injectedForRunRef.current) return;
-      if (message.loggedIn) {
-        startPendingShop();
-      } else {
+      if (message.loggedIn) startPendingShop();
+      else {
         awaitingLoginRef.current = true;
         setStatus('Log in to Woolies — David will continue automatically');
       }
@@ -426,7 +427,6 @@ export default function App() {
     const loadedUrl = event.nativeEvent.url || '';
     if (!loadedUrl.includes('woolworths.com.au')) return;
     if (!pendingItemsRef.current || injectedForRunRef.current) return;
-
     setStatus(awaitingLoginRef.current ? 'Checking your Woolies login…' : 'Opening Woolies…');
     webRef.current?.injectJavaScript(buildWooliesAuthCheckScript());
   }
@@ -472,10 +472,7 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: '#FDFFF7',
-  },
+  safe: { flex: 1, backgroundColor: '#FDFFF7' },
   header: {
     minHeight: 64,
     paddingHorizontal: 14,
@@ -488,41 +485,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
   },
-  brandWrap: {
-    flex: 1,
-    minWidth: 0,
-  },
-  brand: {
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 0.7,
-    color: '#50514F',
-  },
-  status: {
-    fontSize: 11,
-    marginTop: 2,
-    color: '#737470',
-  },
-  nav: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  navButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: '#efefe9',
-  },
-  navActive: {
-    backgroundColor: '#B4ADEA',
-  },
-  navText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#292a28',
-  },
-  webview: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
+  brandWrap: { flex: 1, minWidth: 0 },
+  brand: { fontSize: 13, fontWeight: '800', letterSpacing: 0.7, color: '#50514F' },
+  status: { fontSize: 11, marginTop: 2, color: '#737470' },
+  nav: { flexDirection: 'row', gap: 6 },
+  navButton: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: '#efefe9' },
+  navActive: { backgroundColor: '#B4ADEA' },
+  navText: { fontSize: 12, fontWeight: '700', color: '#292a28' },
+  webview: { flex: 1, backgroundColor: '#fff' },
 });
