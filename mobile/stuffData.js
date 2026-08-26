@@ -11,6 +11,25 @@ export async function ensureStuffUser(user) {
   throwIfError(await supabase.from('stuff_profiles').upsert({ user_id: user.id }, { onConflict: 'user_id' }));
   throwIfError(await supabase.from('stuff_preferences').upsert({ user_id: user.id }, { onConflict: 'user_id' }));
 
+  const profileResult = await supabase
+    .from('stuff_profiles')
+    .select('active_household_id')
+    .eq('user_id', user.id)
+    .maybeSingle();
+  throwIfError(profileResult);
+
+  const activeHouseholdId = profileResult.data?.active_household_id;
+  if (activeHouseholdId) {
+    const activeMembershipResult = await supabase
+      .from('stuff_household_members')
+      .select('household_id')
+      .eq('household_id', activeHouseholdId)
+      .eq('user_id', user.id)
+      .maybeSingle();
+    throwIfError(activeMembershipResult);
+    if (activeMembershipResult.data?.household_id) return { householdId: activeHouseholdId };
+  }
+
   const existingResult = await supabase
     .from('stuff_household_members')
     .select('household_id')
@@ -20,7 +39,14 @@ export async function ensureStuffUser(user) {
     .maybeSingle();
   throwIfError(existingResult);
 
-  if (existingResult.data?.household_id) return { householdId: existingResult.data.household_id };
+  if (existingResult.data?.household_id) {
+    const householdId = existingResult.data.household_id;
+    throwIfError(await supabase
+      .from('stuff_profiles')
+      .update({ active_household_id: householdId, updated_at: new Date().toISOString() })
+      .eq('user_id', user.id));
+    return { householdId };
+  }
 
   const householdResult = await supabase
     .from('stuff_households')
@@ -37,6 +63,11 @@ export async function ensureStuffUser(user) {
   throwIfError(await supabase
     .from('stuff_household_lists')
     .insert({ household_id: householdId, items: [], updated_by: user.id }));
+
+  throwIfError(await supabase
+    .from('stuff_profiles')
+    .update({ active_household_id: householdId, updated_at: new Date().toISOString() })
+    .eq('user_id', user.id));
 
   return { householdId };
 }
@@ -127,6 +158,14 @@ export async function createStuffInvite(householdId, userId, name, contact) {
     contact: String(contact || '').trim(),
   }).select('*').single();
   return throwIfError(result);
+}
+
+export async function acceptStuffInvite(inviteToken) {
+  const token = String(inviteToken || '').trim();
+  if (!token) throw new Error('Enter an invite code.');
+  const result = await supabase.rpc('accept_stuff_household_invite', { invite_token: token });
+  const householdId = throwIfError(result);
+  return householdId;
 }
 
 export async function cancelStuffInvite(inviteId) {
