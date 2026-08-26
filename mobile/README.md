@@ -16,9 +16,9 @@ Native Expo MVP for Stuff the Shopping.
    - **Cheapest suitable** picks the lowest-priced option from products that remain close enough to the strongest match.
    - **Prefer specials** gives suitable on-special products a meaningful ranking boost.
    - **Allow close alternatives** controls how wide the acceptable match set can be.
-8. Leaves final product review, checkout and payment entirely with the retailer.
-
-Usual-brand learning is stored as a user preference but is not yet active in matching.
+   - **Remember usual brands** learns repeated household product choices after successful retailer handoff. After the same product has been chosen more than once for the same request, Stuff favours it on future shops. Explicit requests such as "cheapest" or "on special" override the learned usual.
+8. Account includes **Your usuals**, where learned household products can be reviewed, forgotten individually or reset completely.
+9. Leaves final product review, checkout and payment entirely with the retailer.
 
 ## Fast phone test with Expo Go
 
@@ -39,9 +39,11 @@ Then scan the new QR code with Expo Go.
 - no checkout/payment automation
 - suspicious quantities are capped/defaulted
 - low-confidence product matches are skipped rather than guessed
-- two different list lines cannot silently collapse into the same Woolworths stockcode
+- explicit cheapest/special instructions override learned household usuals
+- age-restricted products are not automatically handed into retailer carts/trolleys
+- retailer security/challenge pages stop automation rather than being bypassed
 - retailer credentials/cookies remain in the retailer WebView
-- Stuff account and household data use Supabase authentication and row-level access controls
+- Stuff account, household and learned-product data use Supabase authentication and row-level access controls
 - Coles trolley handoff is explicitly beta because it relies on current Coles website controls rather than an official retailer API
 
 ## Important
