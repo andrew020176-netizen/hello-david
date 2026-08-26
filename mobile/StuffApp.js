@@ -66,7 +66,7 @@ export default function StuffApp() {
   const webRef = useRef(null), pending = useRef([]), injected = useRef(false), retries = useRef(0);
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recState = useAudioRecorderState(recorder, 250);
-  const [mode,setMode]=useState('shop'),[items,setItems]=useState([]),[open,setOpen]=useState(false),[status,setStatus]=useState('Ready when you are.'),[busy,setBusy]=useState(false),[cartUrl,setCartUrl]=useState(CART_URL),[webKey,setWebKey]=useState(0);
+  const [mode,setMode]=useState('shop'),[items,setItems]=useState([]),[open,setOpen]=useState(true),[status,setStatus]=useState(''),[busy,setBusy]=useState(false),[cartUrl,setCartUrl]=useState(CART_URL),[webKey,setWebKey]=useState(0);
   const recording=!!recState?.isRecording,count=items.length,canSend=count>0&&!busy&&!recording;
   const listLabel=useMemo(()=>count?`Your list · ${count} ${count===1?'item':'items'}`:'Your list',[count]);
 
@@ -82,16 +82,18 @@ export default function StuffApp() {
       if(!res.ok||!data?.success)throw Error(data?.error||'Could not process that recording.');
       const next=mergeItems(items,data.actions||{});
       setItems(next);
-      setStatus(next.length?`Got it — ${next.length} ${next.length===1?'thing':'things'}.`:'Nothing on your list.');
+      setOpen(true);
+      setStatus(next.length?'':'Nothing on your list.');
     }catch(e){setStatus(e?.message||'Could not process that recording.')}finally{setBusy(false)}
   }
 
   async function start(){try{const p=await requestRecordingPermissionsAsync();if(!p.granted){Alert.alert('Microphone access needed','Allow microphone access so you can speak your grocery list.');return}await setAudioModeAsync({playsInSilentMode:true,allowsRecording:true});await recorder.prepareToRecordAsync();recorder.record();setStatus('Listening… tap Stop when you’re finished.')}catch(_){setStatus("Couldn't start the microphone. Try again.")}}
   async function stop(){try{setStatus('Finishing…');await recorder.stop();const uri=recorder.uri||recState?.url;await setAudioModeAsync({allowsRecording:false});await processAudio(uri)}catch(_){setBusy(false);setStatus("Couldn't finish that recording. Try again.")}}
   async function share(){if(!items.length){setStatus('Add some groceries first.');return}try{await Share.share({message:['Our grocery list:',...items.map(i=>`• ${title(i.name)} — ${detail(i)}`)].join('\n')})}catch(_){}}
-  function clearAll(){if(!items.length)return;Alert.alert('Clear your list?','Remove all groceries from this list?',[{text:'Cancel',style:'cancel'},{text:'Clear all',style:'destructive',onPress:()=>{setItems([]);setOpen(false);setStatus('List cleared.')}}])}
+  function editItem(item){if(!item)return;Alert.prompt('Edit item','Update the item name:',value=>{const name=String(value||'').trim();if(!name)return;setItems(v=>v.map(x=>x.id===item.id?{...x,name}:x));setStatus('');},'plain-text',title(item.name))}
+  function clearAll(){if(!items.length)return;Alert.alert('Clear your list?','Remove all groceries from this list?',[{text:'Cancel',style:'cancel'},{text:'Clear all',style:'destructive',onPress:()=>{setItems([]);setOpen(true);setStatus('')}}])}
   function send(){if(!canSend)return;pending.current=items.map(i=>({name:i.name,qty:i.quantity,quantity:i.quantity,unit:i.unit}));injected.current=false;retries.current=0;setStatus('Connecting to Woolies…');setCartUrl('https://www.woolworths.com.au/');setWebKey(k=>k+1);setMode('woolies')}
-  function back(){pending.current=[];injected.current=false;retries.current=0;setMode('shop');setStatus(count?`Got it — ${count} ${count===1?'thing':'things'}.`:'Ready when you are.')}
+  function back(){pending.current=[];injected.current=false;retries.current=0;setMode('shop');setStatus('')}
   function openCart(){setStatus('Opening your Woolies cart…');setCartUrl(CART_URL+'?stuffShopping='+Date.now())}
   function onMessage(e){let m;try{m=JSON.parse(e.nativeEvent.data)}catch(_){return}if(m?.type==='WOOLIES_STATUS'){setStatus(m.message||'Building your Woolies cart…');return}if(m?.type==='WOOLIES_DONE'){const added=Number(m.added||0);pending.current=[];setStatus(added?`Done — ${added} ${added===1?'product':'products'} added.`:(m.message||'Nothing was added.'));if(added)setTimeout(openCart,350)}}
   function onLoad(e){
@@ -125,7 +127,7 @@ export default function StuffApp() {
         <Text style={s.speakText}>{busy?'Sorting…':recording?'Stop':'Tap to talk'}</Text>
       </TouchableOpacity>
 
-      <Text style={s.status}>{status}</Text>
+      {!!status&&<Text style={s.status}>{status}</Text>}
 
       <View style={s.listBlock}>
         <View style={s.listTop}>
@@ -134,7 +136,7 @@ export default function StuffApp() {
             <Text style={s.chev}>{open?'⌃':'⌄'}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.share} onPress={share}>
-            <Text style={s.shareText}>↗  Share</Text>
+            <Text style={s.shareText}>↗ Share</Text>
           </TouchableOpacity>
         </View>
 
@@ -144,6 +146,9 @@ export default function StuffApp() {
               <Text style={s.item}>{title(i.name)}</Text>
               <Text style={s.detail}>{detail(i)}</Text>
             </View>
+            <TouchableOpacity style={s.edit} onPress={()=>editItem(i)}>
+              <Text style={s.editText}>Edit</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={s.remove} onPress={()=>setItems(v=>v.filter(x=>x.id!==i.id))}>
               <Text style={s.removeText}>×</Text>
             </TouchableOpacity>
@@ -177,45 +182,47 @@ export default function StuffApp() {
 
 const s=StyleSheet.create({
   safe:{flex:1,backgroundColor:'#F7F1E3'},
-  screen:{padding:22,paddingTop:16,paddingBottom:26},
+  screen:{padding:22,paddingTop:14,paddingBottom:22},
   brand:{color:'#171717',fontSize:29,lineHeight:25,fontWeight:'900',letterSpacing:-1.5},
   dot:{color:'#F4512C'},
-  intro:{marginTop:46},
+  intro:{marginTop:36},
   tag:{fontSize:17,color:'#55514A',fontWeight:'600'},
-  question:{marginTop:7,fontSize:33,lineHeight:36,color:'#171717',fontWeight:'900',letterSpacing:-1.2},
-  speak:{marginTop:23,minHeight:62,borderRadius:31,backgroundColor:'#F4512C',flexDirection:'row',alignItems:'center',justifyContent:'center',gap:10},
+  question:{marginTop:6,fontSize:33,lineHeight:36,color:'#171717',fontWeight:'900',letterSpacing:-1.2},
+  speak:{marginTop:18,minHeight:60,borderRadius:30,backgroundColor:'#F4512C',flexDirection:'row',alignItems:'center',justifyContent:'center',gap:10},
   stop:{backgroundColor:'#F5D95E'},
   disabled:{opacity:.65},
   speakIcon:{fontSize:18,color:'#FFFFFF'},
   speakText:{color:'#FFFFFF',fontSize:19,fontWeight:'900'},
-  status:{minHeight:34,marginTop:10,color:'#55514A',fontSize:14,lineHeight:20,textAlign:'center'},
-  listBlock:{marginTop:10},
-  listTop:{minHeight:54,flexDirection:'row',alignItems:'center',gap:12},
-  listToggle:{flex:1,flexDirection:'row',alignItems:'center',gap:8,minHeight:48},
+  status:{marginTop:8,color:'#55514A',fontSize:13,lineHeight:18,textAlign:'center'},
+  listBlock:{marginTop:6},
+  listTop:{minHeight:46,flexDirection:'row',alignItems:'center',gap:10},
+  listToggle:{flex:1,flexDirection:'row',alignItems:'center',gap:7,minHeight:42},
   listTitle:{color:'#171717',fontSize:18,fontWeight:'900'},
-  chev:{color:'#171717',fontSize:22,fontWeight:'900'},
-  share:{minHeight:42,paddingHorizontal:17,borderRadius:21,backgroundColor:'#F5D95E',alignItems:'center',justifyContent:'center'},
-  shareText:{color:'#171717',fontSize:14,fontWeight:'900'},
+  chev:{color:'#171717',fontSize:20,fontWeight:'900'},
+  share:{minHeight:32,paddingHorizontal:9,borderRadius:16,borderWidth:StyleSheet.hairlineWidth,borderColor:'#BEB6A7',alignItems:'center',justifyContent:'center'},
+  shareText:{color:'#55514A',fontSize:12,fontWeight:'800'},
   listRows:{borderTopWidth:StyleSheet.hairlineWidth,borderTopColor:'#BEB6A7'},
-  empty:{color:'#777169',paddingVertical:14},
-  row:{minHeight:59,flexDirection:'row',alignItems:'center',borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:'#BEB6A7'},
+  empty:{color:'#777169',paddingVertical:12},
+  row:{minHeight:54,flexDirection:'row',alignItems:'center',borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:'#BEB6A7'},
   item:{color:'#171717',fontSize:16,fontWeight:'800'},
-  detail:{marginTop:3,color:'#69635A',fontSize:13,fontWeight:'600'},
-  remove:{width:44,height:44,alignItems:'center',justifyContent:'center'},
-  removeText:{fontSize:27,color:'#69635A'},
-  clearRow:{minHeight:48,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
-  clearBottom:{paddingVertical:10,paddingRight:10},
-  clearBottomText:{color:'#171717',fontSize:14,fontWeight:'800',textDecorationLine:'underline'},
-  itemCount:{color:'#69635A',fontSize:13,fontWeight:'700'},
-  send:{marginTop:13,minHeight:70,borderRadius:18,backgroundColor:'#006B54',paddingHorizontal:16,flexDirection:'row',alignItems:'center'},
+  detail:{marginTop:2,color:'#69635A',fontSize:12,fontWeight:'600'},
+  edit:{minWidth:44,height:36,alignItems:'center',justifyContent:'center'},
+  editText:{color:'#69635A',fontSize:12,fontWeight:'800',textDecorationLine:'underline'},
+  remove:{width:34,height:40,alignItems:'center',justifyContent:'center'},
+  removeText:{fontSize:24,color:'#69635A'},
+  clearRow:{minHeight:44,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},
+  clearBottom:{paddingVertical:8,paddingRight:10},
+  clearBottomText:{color:'#171717',fontSize:13,fontWeight:'800',textDecorationLine:'underline'},
+  itemCount:{color:'#69635A',fontSize:12,fontWeight:'700'},
+  send:{marginTop:8,minHeight:60,borderRadius:16,backgroundColor:'#006B54',paddingHorizontal:14,flexDirection:'row',alignItems:'center'},
   sendOff:{opacity:.28},
-  wooliesMark:{width:44,height:44,borderRadius:22,backgroundColor:'#8CC63F',alignItems:'center',justifyContent:'center',marginRight:13},
-  wooliesMarkText:{color:'#FFFFFF',fontSize:22,fontWeight:'900',fontStyle:'italic'},
+  wooliesMark:{width:38,height:38,borderRadius:19,backgroundColor:'#8CC63F',alignItems:'center',justifyContent:'center',marginRight:12},
+  wooliesMarkText:{color:'#FFFFFF',fontSize:20,fontWeight:'900',fontStyle:'italic'},
   sendCopy:{flex:1},
-  sendText:{color:'#FFFFFF',fontSize:18,fontWeight:'900'},
-  sendSub:{marginTop:3,color:'#E5F1ED',fontSize:12,fontWeight:'600'},
-  sendArrow:{color:'#FFFFFF',fontSize:38,lineHeight:40,fontWeight:'300',marginLeft:8},
-  note:{marginTop:9,color:'#69635A',fontSize:12,lineHeight:17,textAlign:'center'},
+  sendText:{color:'#FFFFFF',fontSize:17,fontWeight:'900'},
+  sendSub:{marginTop:2,color:'#E5F1ED',fontSize:11,fontWeight:'600'},
+  sendArrow:{color:'#FFFFFF',fontSize:34,lineHeight:36,fontWeight:'300',marginLeft:7},
+  note:{marginTop:7,color:'#69635A',fontSize:11,lineHeight:15,textAlign:'center'},
   bottomNav:{minHeight:82,backgroundColor:'#000000',paddingHorizontal:12,paddingTop:10,paddingBottom:10,flexDirection:'row',alignItems:'center',justifyContent:'space-around'},
   navItem:{flex:1,alignItems:'center',justifyContent:'center'},
   navIcon:{color:'#FFFFFF',fontSize:26,lineHeight:28,fontWeight:'700'},
