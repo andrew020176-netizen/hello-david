@@ -239,6 +239,7 @@ function InfoBlock({title:blockTitle,children}) {
 export default function StuffApp() {
   const webRef = useRef(null), pending = useRef([]), injected = useRef(false), retries = useRef(0), wooliesReturnTab = useRef('home');
   const colesCartQueue=useRef([]),colesCartPos=useRef(0),colesCartAdded=useRef(0),colesCartFailed=useRef([]),colesCartInjected=useRef(false);
+  const retailerWatchdog=useRef(null);
   const itemsRef = useRef([]), saveTimer = useRef(null), lastSyncedList = useRef('');
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recState = useAudioRecorderState(recorder, 250);
@@ -386,6 +387,28 @@ export default function StuffApp() {
     });
   },[user?.id,householdId,dataReady]);
 
+  function clearRetailerWatchdog(){if(retailerWatchdog.current){clearTimeout(retailerWatchdog.current);retailerWatchdog.current=null}}
+  function armRetailerWatchdog(label,ms=90000){
+    clearRetailerWatchdog();
+    retailerWatchdog.current=setTimeout(()=>{
+      pending.current=[];colesCartQueue.current=[];injected.current=false;colesCartInjected.current=false;
+      setStatus(`${label} is taking longer than expected. Continue manually with the retailer or go back.`);
+    },ms);
+  }
+  function retailerChallenge(url){return /captcha|challenge|access[-_ ]?denied|blocked|security[-_ ]?check|perimeterx|akamai/.test(String(url||'').toLowerCase())}
+  function stopForRetailerChallenge(retailer){
+    clearRetailerWatchdog();pending.current=[];colesCartQueue.current=[];injected.current=false;colesCartInjected.current=false;
+    setStatus(`${retailer} needs your attention. Stuff won’t try to bypass a retailer security check — continue manually or go back.`);
+  }
+  function retailerLoadError(retailer,url){
+    clearRetailerWatchdog();pending.current=[];colesCartQueue.current=[];injected.current=false;colesCartInjected.current=false;
+    setStatus(`${retailer} could not load. You can open the retailer directly or go back to your list.`);
+    Alert.alert(`${retailer} could not load`,'Stuff has stopped the handoff. Your shopping list is still safe.',[
+      {text:'Back to Stuff',style:'cancel',onPress:back},
+      {text:`Open ${retailer}`,onPress:()=>Linking.openURL(url).catch(()=>{})},
+    ]);
+  }
+
   async function processAudio(uri){
     if(!uri){setStatus("Couldn't save that recording. Try again.");return}
     setBusy(true);
@@ -408,18 +431,20 @@ export default function StuffApp() {
   async function share(){if(!items.length){setStatus('Add some groceries first.');return}try{await Share.share({message:['Our grocery list:',...items.map(i=>`• ${title(i.name)} — ${detail(i)}`)].join('\n')})}catch(_){}}
   function editItem(item){if(!item)return;Alert.prompt('Edit item','Update the item name:',value=>{const name=String(value||'').trim();if(!name)return;setItems(v=>v.map(x=>x.id===item.id?{...x,name}:x));setStatus('');},'plain-text',title(item.name))}
   function clearAll(){if(!items.length)return;Alert.alert('Clear your list?','Remove all groceries from this list?',[{text:'Cancel',style:'cancel'},{text:'Clear all',style:'destructive',onPress:()=>{setItems([]);setOpen(true);setStatus('')}}])}
-  function send(){if(!canSend)return;const {allowed,restricted}=splitRetailerItems(items);if(restricted.length)Alert.alert('Some items were not automated',`Stuff leaves age-restricted items on your list for you to handle directly with the retailer: ${restricted.map(x=>title(x.name)).join(', ')}.`);if(!allowed.length)return;wooliesReturnTab.current='home';pending.current=allowed.map(i=>({name:i.name,qty:i.quantity,quantity:i.quantity,unit:i.unit}));injected.current=false;retries.current=0;setStatus('Connecting to Woolies…');setCartUrl('https://www.woolworths.com.au/');setWebKey(k=>k+1);setMode('woolies')}
-  function back(){pending.current=[];injected.current=false;retries.current=0;setMode('shop');setTab(wooliesReturnTab.current||'home');setStatus('')}
+  function send(){if(!canSend)return;const {allowed,restricted}=splitRetailerItems(items);if(restricted.length)Alert.alert('Some items were not automated',`Stuff leaves age-restricted items on your list for you to handle directly with the retailer: ${restricted.map(x=>title(x.name)).join(', ')}.`);if(!allowed.length)return;wooliesReturnTab.current='home';pending.current=allowed.map(i=>({name:i.name,qty:i.quantity,quantity:i.quantity,unit:i.unit}));injected.current=false;retries.current=0;setStatus('Connecting to Woolies…');armRetailerWatchdog('Woolworths');setCartUrl('https://www.woolworths.com.au/');setWebKey(k=>k+1);setMode('woolies')}
+  function back(){clearRetailerWatchdog();pending.current=[];colesCartQueue.current=[];injected.current=false;colesCartInjected.current=false;retries.current=0;setMode('shop');setTab(wooliesReturnTab.current||'home');setStatus('')}
   function openCart(){setStatus('Opening your Woolies cart…');setCartUrl(CART_URL+'?stuffShopping='+Date.now())}
-  function onMessage(e){let m;try{m=JSON.parse(e.nativeEvent.data)}catch(_){return}if(m?.type==='WOOLIES_STATUS'){setStatus(m.message||'Building your Woolies cart…');return}if(m?.type==='WOOLIES_DONE'){const added=Number(m.added||0);pending.current=[];setStatus(added?`Done — ${added} ${added===1?'product':'products'} added.`:(m.message||'Nothing was added.'));if(added)setTimeout(openCart,350)}}
+  function onMessage(e){let m;try{m=JSON.parse(e.nativeEvent.data)}catch(_){return}if(m?.type==='WOOLIES_STATUS'){armRetailerWatchdog('Woolworths');setStatus(m.message||'Building your Woolies cart…');return}if(m?.type==='WOOLIES_DONE'){clearRetailerWatchdog();const added=Number(m.added||0);pending.current=[];setStatus(added?`Done — ${added} ${added===1?'product':'products'} added.`:(m.message||'Nothing was added.'));if(added)setTimeout(openCart,350)}}
   function onLoad(e){
     const u=String(e.nativeEvent.url||'');
     const lower=u.toLowerCase();
-    if(!pending.current.length){if(lower.includes('/shop/cart'))setStatus('Cart ready.');return}
+    if(!pending.current.length){clearRetailerWatchdog();if(lower.includes('/shop/cart'))setStatus('Cart ready.');return}
+    if(retailerChallenge(lower)){stopForRetailerChallenge('Woolworths');return}
     if(injected.current)return;
     if(!lower.includes('woolworths.com.au')){setStatus('Connecting to Woolies…');return}
-    if(/login|sign-in|signin|verify|auth/.test(lower)){setStatus('Log in to Woolies — we’ll continue automatically.');return}
+    if(/login|sign-in|signin|verify|auth/.test(lower)){armRetailerWatchdog('Woolworths',180000);setStatus('Log in to Woolies — we’ll continue automatically.');return}
     injected.current=true;
+    armRetailerWatchdog('Woolworths');
     setStatus('Matching your groceries…');
     setTimeout(()=>webRef.current?.injectJavaScript(wooliesScript(pending.current,preferences)),1000);
   }
@@ -427,15 +452,15 @@ export default function StuffApp() {
   function goTab(next){setTab(next);setAccountView('main');setHouseholdView('main');setMoreView('main');setStatus('')}
   function goToStuffLogin(){setTab('account');setAccountView('auth');setHouseholdView('main')}
   function openWoolworthsFromAccount(){wooliesReturnTab.current='account';pending.current=[];injected.current=false;setStatus('Woolworths on this device');setCartUrl('https://www.woolworths.com.au/');setWebKey(k=>k+1);setMode('woolies')}
-  function compareColes(){if(!canSend)return;const {allowed,restricted}=splitRetailerItems(items);if(restricted.length)Alert.alert('Some items were not automated',`Stuff leaves age-restricted items on your list for you to handle directly with the retailer: ${restricted.map(x=>title(x.name)).join(', ')}.`);if(!allowed.length)return;wooliesReturnTab.current='home';pending.current=allowed.map(i=>({name:i.name,qty:i.quantity,quantity:i.quantity,unit:i.unit}));injected.current=false;setColesResults(null);setStatus('Checking Coles…');setWebKey(k=>k+1);setMode('coles')}
+  function compareColes(){if(!canSend)return;const {allowed,restricted}=splitRetailerItems(items);if(restricted.length)Alert.alert('Some items were not automated',`Stuff leaves age-restricted items on your list for you to handle directly with the retailer: ${restricted.map(x=>title(x.name)).join(', ')}.`);if(!allowed.length)return;wooliesReturnTab.current='home';pending.current=allowed.map(i=>({name:i.name,qty:i.quantity,quantity:i.quantity,unit:i.unit}));injected.current=false;setColesResults(null);setStatus('Checking Coles…');armRetailerWatchdog('Coles');setWebKey(k=>k+1);setMode('coles')}
   function openColesFromAccount(){wooliesReturnTab.current='account';pending.current=[];injected.current=false;setStatus('Coles on this device');setWebKey(k=>k+1);setMode('colesSite')}
-  function onColesMessage(e){let m;try{m=JSON.parse(e.nativeEvent.data)}catch(_){return}if(m?.type==='COLES_STATUS'){setStatus(m.message||'Checking Coles…');return}if(m?.type==='COLES_DONE'){pending.current=[];setColesResults(m);setMode('colesResults');setStatus('')}}
-  function onColesLoad(e){const u=String(e.nativeEvent.url||'').toLowerCase();if(!u.includes('coles.com.au')||injected.current)return;injected.current=true;setStatus('Matching your groceries at Coles…');setTimeout(()=>webRef.current?.injectJavaScript(colesCompareScript(pending.current,preferences)),1000)}
+  function onColesMessage(e){let m;try{m=JSON.parse(e.nativeEvent.data)}catch(_){return}if(m?.type==='COLES_STATUS'){armRetailerWatchdog('Coles');setStatus(m.message||'Checking Coles…');return}if(m?.type==='COLES_DONE'){clearRetailerWatchdog();pending.current=[];setColesResults(m);setMode('colesResults');setStatus('')}}
+  function onColesLoad(e){const u=String(e.nativeEvent.url||'').toLowerCase();if(retailerChallenge(u)){stopForRetailerChallenge('Coles');return}if(/login|sign-in|signin|auth/.test(u)&&pending.current.length){armRetailerWatchdog('Coles',180000);setStatus('Log in to Coles if prompted — Stuff will continue when the retailer is ready.');return}if(!u.includes('coles.com.au')||injected.current)return;injected.current=true;armRetailerWatchdog('Coles');setStatus('Matching your groceries at Coles…');setTimeout(()=>webRef.current?.injectJavaScript(colesCompareScript(pending.current,preferences)),1000)}
   function startColesTrolley(){
     const queue=(colesResults?.matches||[]).filter(x=>x?.productId);
     if(!queue.length){Alert.alert('Coles trolley','There are no confident Coles matches to add yet.');return}
     colesCartQueue.current=queue;colesCartPos.current=0;colesCartAdded.current=0;colesCartFailed.current=[];colesCartInjected.current=false;
-    setStatus(`Adding 1 of ${queue.length}: ${queue[0].request}`);setColesCartUrl(colesProductUrl(queue[0]));setWebKey(k=>k+1);setMode('colesCart');
+    setStatus(`Adding 1 of ${queue.length}: ${queue[0].request}`);armRetailerWatchdog('Coles trolley',120000);setColesCartUrl(colesProductUrl(queue[0]));setWebKey(k=>k+1);setMode('colesCart');
   }
   function onColesCartMessage(e){
     let m;try{m=JSON.parse(e.nativeEvent.data)}catch(_){return}
@@ -446,20 +471,21 @@ export default function StuffApp() {
     const next=colesCartPos.current+1;
     if(next>=colesCartQueue.current.length){
       const added=colesCartAdded.current,failed=colesCartFailed.current;
-      setStatus(`Done — ${added} ${added===1?'product':'products'} added${failed.length?`, ${failed.length} need review`:''}. Open the Coles trolley at the top right.`);
+      clearRetailerWatchdog();setStatus(`Done — ${added} ${added===1?'product':'products'} added${failed.length?`, ${failed.length} need review`:''}. Open the Coles trolley at the top right.`);
       setColesCartUrl('https://www.coles.com.au/');
       colesCartQueue.current=[];colesCartInjected.current=false;return;
     }
     colesCartPos.current=next;colesCartInjected.current=false;
-    const item=colesCartQueue.current[next];setStatus(`Adding ${next+1} of ${colesCartQueue.current.length}: ${item.request}`);setColesCartUrl(colesProductUrl(item));
+    const item=colesCartQueue.current[next];armRetailerWatchdog('Coles trolley',45000);setStatus(`Adding ${next+1} of ${colesCartQueue.current.length}: ${item.request}`);setColesCartUrl(colesProductUrl(item));
   }
   function onColesCartLoad(e){
     if(!colesCartQueue.current.length)return;
     const u=String(e.nativeEvent.url||'').toLowerCase();
-    if(/login|sign-in|signin|auth|account/.test(u)){colesCartInjected.current=false;setStatus('Log in to Coles — we’ll continue automatically.');return}
+    if(retailerChallenge(u)){stopForRetailerChallenge('Coles');return}
+    if(/login|sign-in|signin|auth|account/.test(u)){colesCartInjected.current=false;armRetailerWatchdog('Coles trolley',180000);setStatus('Log in to Coles — we’ll continue automatically.');return}
     const item=colesCartQueue.current[colesCartPos.current];
     if(!item||!u.includes('coles.com.au/product/')||colesCartInjected.current)return;
-    colesCartInjected.current=true;setStatus(`Adding ${colesCartPos.current+1} of ${colesCartQueue.current.length}: ${item.request}`);
+    colesCartInjected.current=true;armRetailerWatchdog('Coles trolley',45000);setStatus(`Adding ${colesCartPos.current+1} of ${colesCartQueue.current.length}: ${item.request}`);
     setTimeout(()=>webRef.current?.injectJavaScript(colesAddToTrolleyScript(item)),850);
   }
 
@@ -614,14 +640,14 @@ export default function StuffApp() {
     </ScrollView>
   </SafeAreaView>;
 
-  if(mode==='woolies')return <SafeAreaView style={s.safe}><StatusBar barStyle="dark-content"/><View style={s.cartHead}><TouchableOpacity onPress={back} style={s.back}><Text style={s.backText}>‹ {wooliesReturnTab.current==='account'?'Account':'Shop'}</Text></TouchableOpacity><View style={{flex:1}}><Text style={s.cartTitle}>Woolies</Text><Text style={s.cartStatus} numberOfLines={1}>{status}</Text></View></View><WebView key={webKey} ref={webRef} source={{uri:cartUrl}} style={{flex:1}} onMessage={onMessage} onLoadEnd={onLoad} userAgent={UA} javaScriptEnabled domStorageEnabled sharedCookiesEnabled thirdPartyCookiesEnabled cacheEnabled incognito={false} setSupportMultipleWindows={false}/></SafeAreaView>;
+  if(mode==='woolies')return <SafeAreaView style={s.safe}><StatusBar barStyle="dark-content"/><View style={s.cartHead}><TouchableOpacity onPress={back} style={s.back}><Text style={s.backText}>‹ {wooliesReturnTab.current==='account'?'Account':'Shop'}</Text></TouchableOpacity><View style={{flex:1}}><Text style={s.cartTitle}>Woolies</Text><Text style={s.cartStatus} numberOfLines={1}>{status}</Text></View></View><WebView key={webKey} ref={webRef} source={{uri:cartUrl}} style={{flex:1}} onMessage={onMessage} onLoadEnd={onLoad} onError={()=>retailerLoadError('Woolworths','https://www.woolworths.com.au/')} userAgent={UA} javaScriptEnabled domStorageEnabled sharedCookiesEnabled thirdPartyCookiesEnabled cacheEnabled incognito={false} setSupportMultipleWindows={false}/></SafeAreaView>;
 
 
-  if(mode==='coles')return <SafeAreaView style={s.safe}><StatusBar barStyle="dark-content"/><View style={s.cartHead}><TouchableOpacity onPress={back} style={s.back}><Text style={s.backText}>‹ Shop</Text></TouchableOpacity><View style={{flex:1}}><Text style={s.cartTitle}>Coles</Text><Text style={s.cartStatus} numberOfLines={1}>{status}</Text></View></View><WebView key={`coles-${webKey}`} ref={webRef} source={{uri:'https://www.coles.com.au/'}} style={{flex:1}} onMessage={onColesMessage} onLoadEnd={onColesLoad} userAgent={UA} javaScriptEnabled domStorageEnabled sharedCookiesEnabled thirdPartyCookiesEnabled cacheEnabled incognito={false} setSupportMultipleWindows={false}/></SafeAreaView>;
+  if(mode==='coles')return <SafeAreaView style={s.safe}><StatusBar barStyle="dark-content"/><View style={s.cartHead}><TouchableOpacity onPress={back} style={s.back}><Text style={s.backText}>‹ Shop</Text></TouchableOpacity><View style={{flex:1}}><Text style={s.cartTitle}>Coles</Text><Text style={s.cartStatus} numberOfLines={1}>{status}</Text></View></View><WebView key={`coles-${webKey}`} ref={webRef} source={{uri:'https://www.coles.com.au/'}} style={{flex:1}} onMessage={onColesMessage} onLoadEnd={onColesLoad} onError={()=>retailerLoadError('Coles','https://www.coles.com.au/')} userAgent={UA} javaScriptEnabled domStorageEnabled sharedCookiesEnabled thirdPartyCookiesEnabled cacheEnabled incognito={false} setSupportMultipleWindows={false}/></SafeAreaView>;
 
-  if(mode==='colesSite')return <SafeAreaView style={s.safe}><StatusBar barStyle="dark-content"/><View style={s.cartHead}><TouchableOpacity onPress={back} style={s.back}><Text style={s.backText}>‹ {wooliesReturnTab.current==='account'?'Account':'Shop'}</Text></TouchableOpacity><View style={{flex:1}}><Text style={s.cartTitle}>Coles</Text><Text style={s.cartStatus} numberOfLines={1}>{status}</Text></View></View><WebView key={`coles-site-${webKey}`} ref={webRef} source={{uri:'https://www.coles.com.au/'}} style={{flex:1}} userAgent={UA} javaScriptEnabled domStorageEnabled sharedCookiesEnabled thirdPartyCookiesEnabled cacheEnabled incognito={false} setSupportMultipleWindows={false}/></SafeAreaView>;
+  if(mode==='colesSite')return <SafeAreaView style={s.safe}><StatusBar barStyle="dark-content"/><View style={s.cartHead}><TouchableOpacity onPress={back} style={s.back}><Text style={s.backText}>‹ {wooliesReturnTab.current==='account'?'Account':'Shop'}</Text></TouchableOpacity><View style={{flex:1}}><Text style={s.cartTitle}>Coles</Text><Text style={s.cartStatus} numberOfLines={1}>{status}</Text></View></View><WebView key={`coles-site-${webKey}`} ref={webRef} source={{uri:'https://www.coles.com.au/'}} style={{flex:1}} onError={()=>retailerLoadError('Coles','https://www.coles.com.au/')} userAgent={UA} javaScriptEnabled domStorageEnabled sharedCookiesEnabled thirdPartyCookiesEnabled cacheEnabled incognito={false} setSupportMultipleWindows={false}/></SafeAreaView>;
 
-  if(mode==='colesCart')return <SafeAreaView style={s.safe}><StatusBar barStyle="dark-content"/><View style={s.cartHead}><TouchableOpacity onPress={()=>setMode('colesResults')} style={s.back}><Text style={s.backText}>‹ Coles matches</Text></TouchableOpacity><View style={{flex:1}}><Text style={s.cartTitle}>Building Coles trolley</Text><Text style={s.cartStatus} numberOfLines={2}>{status}</Text></View></View><WebView key={`coles-cart-${webKey}`} ref={webRef} source={{uri:colesCartUrl}} style={{flex:1}} onMessage={onColesCartMessage} onLoadEnd={onColesCartLoad} userAgent={UA} javaScriptEnabled domStorageEnabled sharedCookiesEnabled thirdPartyCookiesEnabled cacheEnabled incognito={false} setSupportMultipleWindows={false}/></SafeAreaView>;
+  if(mode==='colesCart')return <SafeAreaView style={s.safe}><StatusBar barStyle="dark-content"/><View style={s.cartHead}><TouchableOpacity onPress={()=>setMode('colesResults')} style={s.back}><Text style={s.backText}>‹ Coles matches</Text></TouchableOpacity><View style={{flex:1}}><Text style={s.cartTitle}>Building Coles trolley</Text><Text style={s.cartStatus} numberOfLines={2}>{status}</Text></View></View><WebView key={`coles-cart-${webKey}`} ref={webRef} source={{uri:colesCartUrl}} style={{flex:1}} onMessage={onColesCartMessage} onLoadEnd={onColesCartLoad} onError={()=>retailerLoadError('Coles','https://www.coles.com.au/')} userAgent={UA} javaScriptEnabled domStorageEnabled sharedCookiesEnabled thirdPartyCookiesEnabled cacheEnabled incognito={false} setSupportMultipleWindows={false}/></SafeAreaView>;
 
   if(mode==='colesResults')return <SafeAreaView style={s.safe}>
     <StatusBar barStyle="dark-content" backgroundColor="#F7F1E3"/>
