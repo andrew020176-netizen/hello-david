@@ -49,6 +49,16 @@ function buildWooliesScript(items) {
       } catch (_) {}
     };
 
+    async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        return await fetch(url, { ...options, signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
     function overlay() {
       let box = document.getElementById('hello-david-mobile-progress');
       if (box) return box;
@@ -208,7 +218,7 @@ function buildWooliesScript(items) {
 
     async function searchProducts(item) {
       const query = buildSearchQuery(item);
-      const response = await fetch('/apis/ui/Search/products', {
+      const response = await fetchWithTimeout('/apis/ui/Search/products', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json, text/plain, */*' },
         credentials: 'same-origin',
@@ -227,7 +237,7 @@ function buildWooliesScript(items) {
           GroupEdmVariants: false,
           EnableAdReRanking: false
         })
-      });
+      }, 12000);
       if (!response.ok) throw new Error('Search failed (' + response.status + ')');
       const data = await response.json();
       const products = [];
@@ -254,6 +264,38 @@ function buildWooliesScript(items) {
       return Math.max(1, Math.min(6, Math.round(wanted)));
     }
 
+    function trolleyBody(rows) {
+      return {
+        items: rows.map(row => ({
+          stockcode: Number(row.product.Stockcode),
+          quantity: Math.max(1, Math.min(12, Number(row.quantity) || 1)),
+          source: 'SearchResults',
+          diagnostics: '0',
+          searchTerm: buildSearchQuery(row.item),
+          evaluateRewardPoints: false,
+          offerId: null,
+          profileId: null,
+          priceLevel: null
+        }))
+      };
+    }
+
+    async function addRows(rows) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const response = await fetchWithTimeout('/api/v3/ui/trolley/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': '*/*' },
+            credentials: 'same-origin',
+            body: JSON.stringify(trolleyBody(rows))
+          }, 12000);
+          if (response.ok) return true;
+        } catch (_) {}
+        await sleep(350 * (attempt + 1));
+      }
+      return false;
+    }
+
     try {
       if (!Array.isArray(items) || !items.length) {
         setProgress('There is nothing to add.');
@@ -263,12 +305,23 @@ function buildWooliesScript(items) {
 
       const selected = [];
       const unmatched = [];
+      const searchFailed = [];
       const usedStockcodes = new Map();
 
       for (let index = 0; index < items.length; index++) {
         const item = items[index];
         setProgress('Matching ' + (index + 1) + ' of ' + items.length + ': ' + item.name);
-        const products = await searchProducts(item);
+
+        let products = [];
+        try {
+          products = await searchProducts(item);
+        } catch (error) {
+          console.warn('Woolies search failed for', item.name, error);
+          searchFailed.push(item.name);
+          await sleep(200);
+          continue;
+        }
+
         const ranked = products
           .map(product => rankProduct(item, product))
           .sort((a, b) => b.score - a.score || Number(a.product.Price || 9999) - Number(b.product.Price || 9999));
@@ -294,45 +347,38 @@ function buildWooliesScript(items) {
 
       let added = 0;
       let failed = 0;
-      for (let i = 0; i < selected.length; i += 10) {
-        const batchRows = selected.slice(i, i + 10);
-        setProgress('Adding ' + Math.min(i + 10, selected.length) + ' of ' + selected.length + ' matched products…');
-        const body = {
-          items: batchRows.map(row => ({
-            stockcode: Number(row.product.Stockcode),
-            quantity: Math.max(1, Math.min(12, Number(row.quantity) || 1)),
-            source: 'SearchResults',
-            diagnostics: '0',
-            searchTerm: buildSearchQuery(row.item),
-            evaluateRewardPoints: false,
-            offerId: null,
-            profileId: null,
-            priceLevel: null
-          }))
-        };
+      const batchSize = 5;
 
-        const response = await fetch('/api/v3/ui/trolley/update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Accept': '*/*' },
-          credentials: 'same-origin',
-          body: JSON.stringify(body)
-        });
+      for (let i = 0; i < selected.length; i += batchSize) {
+        const batchRows = selected.slice(i, i + batchSize);
+        setProgress('Adding ' + Math.min(i + batchSize, selected.length) + ' of ' + selected.length + ' matched products…');
 
-        if (response.ok) added += batchRows.length;
-        else failed += batchRows.length;
+        const batchOk = await addRows(batchRows);
+        if (batchOk) {
+          added += batchRows.length;
+        } else {
+          // Salvage a partial basket rather than abandoning the whole shop.
+          for (const row of batchRows) {
+            const rowOk = await addRows([row]);
+            if (rowOk) added += 1;
+            else failed += 1;
+            await sleep(150);
+          }
+        }
         await sleep(250);
       }
 
       const parts = [String(added) + ' products added.'];
-      if (unmatched.length) parts.push('Skipped because David was not confident: ' + unmatched.join(', ') + '.');
+      if (unmatched.length) parts.push('Could not confidently match: ' + unmatched.join(', ') + '.');
+      if (searchFailed.length) parts.push('Woolies search timed out for: ' + searchFailed.join(', ') + '.');
       if (failed) parts.push(String(failed) + ' matched products failed to add.');
-      parts.push('Review your cart before checkout.');
+      parts.push('Opening your cart to review.');
       const summary = parts.join(' ');
       setProgress(summary);
-      post('WOOLIES_DONE', summary, { success: failed === 0, added, failed, unmatched });
+      post('WOOLIES_DONE', summary, { success: added > 0, added, failed, unmatched, searchFailed });
 
-      if (!failed) {
-        await sleep(1000);
+      if (added > 0) {
+        await sleep(900);
         location.href = '/shop/cart';
       }
     } catch (error) {
