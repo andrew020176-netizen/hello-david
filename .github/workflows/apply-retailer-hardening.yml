@@ -1,0 +1,26 @@
+name: Apply retailer hardening
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-retailer-hardening.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Harden retailer handoff
+        run: python3 .github/scripts/harden_retailer_handoff.py
+      - name: Commit retailer hardening
+        run: |
+          git config user.name "stuff-shopping-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add mobile/StuffApp.js
+          git commit -m "Harden retailer handoff failures and security checks"
+          git push origin HEAD:main
