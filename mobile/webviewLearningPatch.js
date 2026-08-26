@@ -24,7 +24,7 @@ const CATEGORY_RULES = [
   { test: /\bmilk\b/i, terms: ['milk'] },
   { test: /\bcheese\b|\bcheddar\b/i, terms: ['cheese','cheddar','tasty'] },
   { test: /\bavocados?\b/i, terms: ['avocado','avocados'] },
-  { test: /\bmuffins?\b/i, terms: ['muffin','muffins'] },
+  { test: /\bmuffins?\b/i, terms: ['muffin','muffins','choc','chocolate'] },
   { test: /\btomatoes?\b/i, terms: ['tomato','tomatoes'] },
   { test: /\bapples?\b/i, terms: ['apple','apples'] },
   { test: /\bbananas?\b/i, terms: ['banana','bananas'] },
@@ -45,6 +45,26 @@ function candidateScore(request, product) {
   for (const term of terms) if (hay.includes(term)) score += 40;
   for (const word of words(request)) if (hay.includes(word)) score += 8;
   return score;
+}
+
+function patchMatcherScript(script) {
+  let out = String(script || '');
+  if (!out.includes('Matching your groceries')) return out;
+
+  out = out.replace(
+    "if(r.includes('chocolate muffin'))return t.includes('muffin')&&t.includes('chocolate');",
+    "if(r.includes('chocolate muffin'))return t.includes('muffin')&&(t.includes('chocolate')||/\\bchoc\\b/.test(t));"
+  );
+  out = out.replace(
+    "if(r.includes('cheddar'))return t.includes('cheddar')&&t.includes('cheese');",
+    "if(r.includes('cheddar'))return (t.includes('cheddar')||t.includes('tasty'))&&t.includes('cheese');"
+  );
+
+  const oldRank = "const ws=words(query(i)),needed=ws.length===1?1:Math.min(2,ws.length);let ranked=ps.map(p=>({p,s:score(i,p),hits:ws.filter(w=>txt(p).includes(w)).length,price:+(p.Price||999)}))";
+  const newRank = "const ws=words(query(i)),needed=ws.length===1?1:Math.min(2,ws.length);const wordHit=(t,w)=>t.includes(w)||(w==='avocados'&&t.includes('avocado'))||(w==='avocado'&&t.includes('avocados'))||(w==='muffins'&&t.includes('muffin'))||(w==='muffin'&&t.includes('muffins'))||(w==='chocolate'&&(t.includes('chocolate')||/\\bchoc\\b/.test(t)))||(w==='cheddar'&&(t.includes('cheddar')||t.includes('tasty')));let ranked=ps.map(p=>({p,s:score(i,p),hits:ws.filter(w=>wordHit(txt(p),w)).length,price:+(p.Price||999)}))";
+  out = out.replace(oldRank, newRank);
+
+  return out;
 }
 
 function detectChanges(products) {
@@ -127,11 +147,23 @@ const CART_WATCH_SCRIPT = `
 if (OriginalWebView && !OriginalWebView.__stuffLearningWrapped) {
   const WrappedWebView = React.forwardRef((props, forwardedRef) => {
     const innerRef = React.useRef(null);
+    const exposedRef = React.useRef(null);
 
     const setRef = React.useCallback(node => {
       innerRef.current = node;
-      if (typeof forwardedRef === 'function') forwardedRef(node);
-      else if (forwardedRef) forwardedRef.current = node;
+      if (node) {
+        exposedRef.current = new Proxy(node, {
+          get(target, prop) {
+            if (prop === 'injectJavaScript') return script => target.injectJavaScript(patchMatcherScript(script));
+            const value = target[prop];
+            return typeof value === 'function' ? value.bind(target) : value;
+          }
+        });
+      } else {
+        exposedRef.current = null;
+      }
+      if (typeof forwardedRef === 'function') forwardedRef(exposedRef.current);
+      else if (forwardedRef) forwardedRef.current = exposedRef.current;
     }, [forwardedRef]);
 
     const onMessage = React.useCallback(event => {
