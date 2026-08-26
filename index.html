@@ -1,100 +1,38 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Hello David</title>
-  <link rel="stylesheet" href="styles.css?v=4" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="Stuff the Shopping turns what you say into a shared grocery list and helps get the shop ready at supported supermarkets." />
+  <meta name="theme-color" content="#F4512C" />
+  <title>Stuff the Shopping</title>
+  <style>
+    :root{--ink:#171717;--muted:#5f5a52;--cream:#f7f1e3;--orange:#f4512c;--mint:#a7dcc1;--line:#d3cbbb;--white:#fff}
+    *{box-sizing:border-box}html,body{margin:0;background:var(--cream);color:var(--ink);font-family:Arial,Helvetica,sans-serif}body{min-height:100vh}.wrap{max-width:980px;margin:0 auto;padding:34px 22px 70px}.brand{font-size:30px;line-height:.85;font-weight:900;letter-spacing:-1.5px}.dot{color:var(--orange)}.hero{padding:72px 0 64px;max-width:800px}h1{font-size:clamp(54px,10vw,105px);line-height:.86;letter-spacing:-5px;margin:0 0 28px;font-weight:900}.lead{font-size:clamp(21px,3.2vw,31px);line-height:1.18;max-width:720px;margin:0;color:#292724}.accent{display:inline-block;background:var(--orange);color:white;padding:.06em .13em}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:8px 0 48px}.card{border-top:3px solid var(--ink);padding:17px 2px 4px}.num{font-size:13px;font-weight:900;color:var(--orange);letter-spacing:.08em}.card h2{font-size:25px;letter-spacing:-1px;margin:10px 0 8px}.card p,.small{color:var(--muted);line-height:1.5}.support{margin-top:48px;padding:26px;background:var(--ink);color:var(--white)}.support h2{font-size:32px;letter-spacing:-1.2px;margin:0 0 10px}.support p{color:#e6e1d8;max-width:680px;line-height:1.5}.links{display:flex;gap:20px;flex-wrap:wrap;margin-top:20px}.links a{color:var(--white);font-weight:900;text-decoration:none;border-bottom:2px solid var(--orange);padding-bottom:3px}.fine{margin-top:30px;font-size:13px;color:#777064;line-height:1.5;max-width:790px}@media(max-width:700px){.wrap{padding-top:25px}.hero{padding:54px 0 46px}h1{letter-spacing:-3px}.grid{grid-template-columns:1fr;gap:8px}.card{padding-bottom:16px}}
+  </style>
 </head>
 <body>
-  <main class="shell">
-    <header class="topbar">
-      <div>
-        <div class="eyebrow">HELLO DAVID</div>
-        <h1>Your shop, sorted.</h1>
-        <p class="sub">Walk around. Say what you need. David keeps the shop together.</p>
-      </div>
-      <button id="voiceToggle" class="voice-toggle technical-only" aria-pressed="false" tabindex="-1">Voice off</button>
-    </header>
+  <main class="wrap">
+    <div class="brand">stuff<br>the<br>shopping<span class="dot">.</span></div>
 
-    <section class="panel hero-panel voice-first-panel">
-      <div class="assistant-row">
-        <div class="avatar">D</div>
-        <div>
-          <div class="assistant-name">David</div>
-          <div class="assistant-copy">Start, stop and come back whenever you like.</div>
-        </div>
-      </div>
-
-      <div class="voice-first-wrap">
-        <div class="input-actions voice-first-actions" role="group" aria-label="Shopping list actions">
-          <button id="micBtn" class="primary-btn voice-primary">🎙 Speak</button>
-          <button id="addBtn" class="secondary-btn technical-only" tabindex="-1">Add to shop</button>
-        </div>
-        <div class="voice-static-hint">Stop and come back anytime — this shop stays open. Share it with someone else and they can add too.</div>
-
-        <textarea id="groceryInput" class="technical-only" aria-hidden="true" tabindex="-1"></textarea>
-        <div id="speechStatus" class="technical-only" aria-live="polite"></div>
-      </div>
+    <section class="hero">
+      <h1>Say it.<br><span class="accent">We’ll shop it.</span></h1>
+      <p class="lead">Tell Stuff what you need. It builds the grocery list, shares it with the household and helps get the shop ready at supported supermarkets.</p>
     </section>
 
-    <section class="panel shop-panel">
-      <div class="section-head">
-        <div>
-          <div class="eyebrow">HOUSEHOLD NEED</div>
-          <h2>This week’s shop</h2>
-          <p class="sub small">Tell David what you need. When you’re ready, he’ll find the products in Woolworths and build the cart.</p>
-        </div>
-        <button id="clearBtn" class="text-btn">Clear</button>
-      </div>
-      <div id="emptyState" class="empty-state">Nothing added yet. Tap Speak and walk around the house.</div>
-      <div id="itemsList" class="items-list"></div>
+    <section class="grid" aria-label="How Stuff works">
+      <article class="card"><div class="num">01</div><h2>Say what you need.</h2><p>Use natural speech instead of typing every item, size and preference.</p></article>
+      <article class="card"><div class="num">02</div><h2>Stuff remembers.</h2><p>Your household list stays shared, and repeated product choices can become your usuals.</p></article>
+      <article class="card"><div class="num">03</div><h2>Review with the retailer.</h2><p>Stuff helps match the list to supported retailer products. You review the trolley and complete checkout with the retailer.</p></article>
     </section>
 
-    <section class="panel meal-panel">
-      <div class="section-head">
-        <div>
-          <div class="eyebrow">MEALS</div>
-          <h2>Add a dinner</h2>
-          <p class="sub small">Pick a meal and David adds only what is missing from the shop.</p>
-        </div>
-      </div>
-      <div class="meal-buttons">
-        <button data-meal="salmon" class="meal-btn">Salmon + greens</button>
-        <button data-meal="burgers" class="meal-btn">Burgers</button>
-        <button data-meal="fajitas" class="meal-btn">Chicken fajitas</button>
-      </div>
+    <section class="support">
+      <h2>Need help?</h2>
+      <p>In the app, open <strong>More → Help &amp; support</strong> to send a support or privacy request. You can also review the current legal information below.</p>
+      <div class="links"><a href="/privacy.html">Privacy Policy</a><a href="/terms.html">Terms of Use</a></div>
     </section>
+
+    <p class="fine">Stuff is an independent shopping assistant. It is not affiliated with, endorsed by or sponsored by Woolworths, Coles or any other retailer unless expressly stated. Prices, stock, retailer accounts, checkout and payment remain controlled by the retailer.</p>
   </main>
-
-  <template id="itemTemplate">
-    <div class="item-row">
-      <div class="item-main">
-        <input class="item-name" />
-        <div class="item-meta"></div>
-      </div>
-      <input class="item-qty" type="number" min="0.1" step="0.1" aria-label="Purchase quantity" />
-      <button class="remove-btn" aria-label="Remove item">×</button>
-    </div>
-  </template>
-
-  <script>
-    try { Object.defineProperty(window, 'SpeechRecognition', { value: undefined, configurable: true }); } catch (_) { window.SpeechRecognition = undefined; }
-    try { Object.defineProperty(window, 'webkitSpeechRecognition', { value: undefined, configurable: true }); } catch (_) { window.webkitSpeechRecognition = undefined; }
-
-    (() => {
-      const oldAudioEndpoint = 'https://oobquipkeobfnotyynjr.supabase.co/functions/v1/hello-david-process-audio';
-      const newAudioEndpoint = 'https://wfhgyunfvdyxwtggntpc.supabase.co/functions/v1/hello-david-process-audio';
-      const nativeFetch = window.fetch.bind(window);
-      window.fetch = (input, init) => {
-        if (typeof input === 'string' && input === oldAudioEndpoint) input = newAudioEndpoint;
-        return nativeFetch(input, init);
-      };
-    })();
-  </script>
-  <script src="app.js?v=4"></script>
-  <script src="audio-recorder.js?v=6"></script>
-  <script src="shared-shop.js?v=2"></script>
-  <script src="woolies-handoff.js?v=5"></script>
 </body>
 </html>

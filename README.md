@@ -1,30 +1,28 @@
-# Hello David — prototype 01
+# Stuff the Shopping
 
-A deliberately thin grocery-agent prototype:
+Stuff is a voice-first grocery assistant that turns natural speech into an editable household shopping list, learns repeated household product choices, and helps hand the shop off to supported retailers for final review and checkout.
 
-- voice or typed grocery input
-- converts rough requirements into an editable household shop
-- adds simple meal ingredients
-- deduplicates overlapping requirements
-- compares demo Woolworths / Coles / Aldi baskets
-- optional spoken responses from "David"
+## Mobile app
 
-## Run it
+The current product lives in `mobile/` and is built with Expo / React Native.
 
-The simplest option is to open `index.html` in a browser.
+Current MVP capabilities include:
 
-For a local web server:
+- voice-to-list grocery capture
+- editable shopping list
+- household accounts and shared realtime lists
+- shopping preferences including best match, cheapest, specials and alternatives
+- household-level usual-product learning
+- Woolworths cart handoff
+- Coles trolley beta
+- restricted-product guardrails
+- in-app support, privacy and terms
+- fixed regression shop for development testing
 
-```bash
-python -m http.server 8000
-```
+See `mobile/README.md` and `mobile/REGRESSION_TEST.md` for the current run and test flow.
 
-Then open `http://localhost:8000`.
+## Public pages
 
-## Important
+`index.html`, `privacy.html` and `terms.html` provide the lightweight public landing/support and legal pages used by Stuff.
 
-Retailer prices in this prototype are DEMO DATA only. The next technical step is to replace `catalogues` in `app.js` with a live retailer product/pricing data source.
-
-## Suggested GitHub repo name
-
-`hello-david`
+Stuff is an independent service and is not affiliated with or endorsed by Woolworths, Coles or other retailers unless expressly stated.

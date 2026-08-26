@@ -8,7 +8,7 @@
     "userInterfaceStyle": "light",
     "icon": "./assets/icon.png",
     "splash": {
-      "image": "./assets/icon.png",
+      "image": "./assets/adaptive-icon.png",
       "backgroundColor": "#F4512C",
       "resizeMode": "contain"
     },
@@ -25,7 +25,7 @@
       "versionCode": 1,
       "icon": "./assets/icon.png",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#F4512C"
       },
       "permissions": ["RECORD_AUDIO"]
