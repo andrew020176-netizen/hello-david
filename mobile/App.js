@@ -11,6 +11,30 @@ import { WebView } from 'react-native-webview';
 
 const DAVID_URL = 'https://hellodavid.com.au/?app=1';
 const WOOLIES_URL = 'https://www.woolworths.com.au/';
+const SAFARI_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1';
+
+function buildWooliesAuthCheckScript() {
+  return `
+  (() => {
+    try {
+      const text = String(document.body?.innerText || '').toLowerCase();
+      const path = String(location.pathname || '').toLowerCase();
+      const loggedOut =
+        path.includes('login') ||
+        text.includes('welcome to woolworths online') ||
+        text.includes('log in or sign up') ||
+        text.includes('forgot password');
+
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'WOOLIES_AUTH_STATE',
+        loggedIn: !loggedOut,
+        url: location.href
+      }));
+    } catch (_) {}
+  })();
+  true;
+  `;
+}
 
 function buildWooliesScript(items) {
   const payload = JSON.stringify(Array.isArray(items) ? items.slice(0, 60) : []);
@@ -159,7 +183,6 @@ function buildWooliesScript(items) {
         }
       }
 
-      // A special is useful only after the product is already a sensible match.
       const explicitlyWantsSpecial = /special|sale/i.test(item.name || '') || /special|sale/i.test(unit);
       if (product.IsOnSpecial) score += explicitlyWantsSpecial ? 30 : 8;
       else if (explicitlyWantsSpecial) score -= 8;
@@ -214,7 +237,6 @@ function buildWooliesScript(items) {
       const unit = normaliseUnit(item.unit);
       const text = productText(product);
 
-      // If the spoken number describes litres / grams / kilos, that is pack size, not cart quantity.
       if (requestedMeasure(item)) return 1;
 
       if (wanted > 12) return 1;
@@ -327,6 +349,7 @@ export default function App() {
   const webRef = useRef(null);
   const pendingItemsRef = useRef(null);
   const injectedForRunRef = useRef(false);
+  const awaitingLoginRef = useRef(false);
   const [url, setUrl] = useState(DAVID_URL);
   const [status, setStatus] = useState('David');
 
@@ -335,6 +358,7 @@ export default function App() {
   function goDavid() {
     pendingItemsRef.current = null;
     injectedForRunRef.current = false;
+    awaitingLoginRef.current = false;
     setStatus('David');
     setUrl(DAVID_URL + '&t=' + Date.now());
   }
@@ -342,8 +366,17 @@ export default function App() {
   function goWoolies() {
     pendingItemsRef.current = null;
     injectedForRunRef.current = false;
+    awaitingLoginRef.current = false;
     setStatus('Woolies');
     setUrl(WOOLIES_URL + '?helloDavid=' + Date.now());
+  }
+
+  function startPendingShop() {
+    if (!pendingItemsRef.current || injectedForRunRef.current) return;
+    awaitingLoginRef.current = false;
+    injectedForRunRef.current = true;
+    setStatus('Matching your Woolies products…');
+    webRef.current?.injectJavaScript(buildWooliesScript(pendingItemsRef.current));
   }
 
   function handleMessage(event) {
@@ -359,8 +392,20 @@ export default function App() {
       if (!items.length) return;
       pendingItemsRef.current = items;
       injectedForRunRef.current = false;
-      setStatus('Opening Woolies…');
+      awaitingLoginRef.current = true;
+      setStatus('Checking your Woolies login…');
       setUrl(WOOLIES_URL + '?helloDavid=' + Date.now());
+      return;
+    }
+
+    if (message?.type === 'WOOLIES_AUTH_STATE') {
+      if (!pendingItemsRef.current || injectedForRunRef.current) return;
+      if (message.loggedIn) {
+        startPendingShop();
+      } else {
+        awaitingLoginRef.current = true;
+        setStatus('Log in to Woolies — David will continue automatically');
+      }
       return;
     }
 
@@ -372,6 +417,7 @@ export default function App() {
     if (message?.type === 'WOOLIES_DONE') {
       pendingItemsRef.current = null;
       injectedForRunRef.current = true;
+      awaitingLoginRef.current = false;
       setStatus(message.message || 'Cart ready to review');
     }
   }
@@ -381,9 +427,8 @@ export default function App() {
     if (!loadedUrl.includes('woolworths.com.au')) return;
     if (!pendingItemsRef.current || injectedForRunRef.current) return;
 
-    injectedForRunRef.current = true;
-    setStatus('Matching your Woolies products…');
-    webRef.current?.injectJavaScript(buildWooliesScript(pendingItemsRef.current));
+    setStatus(awaitingLoginRef.current ? 'Checking your Woolies login…' : 'Opening Woolies…');
+    webRef.current?.injectJavaScript(buildWooliesAuthCheckScript());
   }
 
   return (
@@ -410,10 +455,13 @@ export default function App() {
         style={styles.webview}
         onMessage={handleMessage}
         onLoadEnd={handleLoadEnd}
+        userAgent={SAFARI_USER_AGENT}
         javaScriptEnabled
+        javaScriptCanOpenWindowsAutomatically
         domStorageEnabled
         sharedCookiesEnabled
         thirdPartyCookiesEnabled
+        cacheEnabled
         incognito={false}
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
