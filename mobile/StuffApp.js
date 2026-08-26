@@ -73,7 +73,7 @@ function BottomNav({tab,onChange}) {
 }
 
 function MenuRow({title:rowTitle,sub,right='›',onPress,danger=false}) {
-  return <TouchableOpacity style={s.menuRow} onPress={onPress} disabled={!onPress} activeOpacity={onPress?.7:1}>
+  return <TouchableOpacity style={s.menuRow} onPress={onPress} disabled={!onPress} activeOpacity={onPress ? .7 : 1}>
     <View style={{flex:1,paddingRight:12}}>
       <Text style={[s.menuTitle,danger&&s.danger]}>{rowTitle}</Text>
       {!!sub&&<Text style={s.menuSub}>{sub}</Text>}
@@ -330,7 +330,7 @@ const s=StyleSheet.create({
   sectionTitle:{marginTop:28,marginBottom:8,color:'#171717',fontSize:18,fontWeight:'900'},
   menuBlock:{borderTopWidth:StyleSheet.hairlineWidth,borderTopColor:'#BEB6A7',borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:'#BEB6A7'},
   menuRow:{minHeight:66,flexDirection:'row',alignItems:'center',borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:'#D4CCBE'},
-  menuTitle:{color:'#171717',fontSize:16,fontWeight:'850'},
+  menuTitle:{color:'#171717',fontSize:16,fontWeight:'800'},
   menuSub:{marginTop:4,color:'#69635A',fontSize:12,lineHeight:16,fontWeight:'600'},
   menuRight:{color:'#69635A',fontSize:14,fontWeight:'800'},
   danger:{color:'#C83D24'},
