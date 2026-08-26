@@ -11,6 +11,7 @@
 - EAS preview and production build profiles
 - CI validation of release assets/config plus iOS Expo export
 - fixed 22-item regression shop for development testing
+- usual-product settings copy aligned with the live learning behaviour
 
 ## Phone test before external beta
 1. Pull `main` and run the app in Expo Go.
