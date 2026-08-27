@@ -1,5 +1,5 @@
 import { registerRootComponent } from 'expo';
-import './webviewMatcherGuard';
+import './woolworthsEngineV2';
 
 const AppRoot = require('./AppRoot').default;
 
