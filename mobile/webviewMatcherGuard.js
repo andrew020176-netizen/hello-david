@@ -7,9 +7,15 @@ function patchMatcherScript(script) {
   let out = String(script || '');
   if (!out.includes('Matching your groceries')) return out;
 
-  // Expand ordinary Woolworths search language using simple string targets.
-  // These deliberately avoid matching escaped regex source, which is fragile
-  // once the matcher has been turned into an injected JavaScript string.
+  // Normalise shopper wording before the matcher builds its lexical confidence
+  // gate. Woolworths commonly names the fresh product in the singular
+  // ("Avocado ... Each") even when the shopper asks for "avocados".
+  out = out.replace(
+    "const query=i=>{let q=baseQuery(i);const r=req(i);",
+    "const query=i=>{let q=baseQuery(i);const r=req(i);if(r.includes('avocado'))q='avocado';"
+  );
+
+  // Expand ordinary Woolworths search language.
   out = out.replace(
     "out.push('fresh avocado')",
     "out.push('fresh avocado');out.push('avocado each');out.push('hass avocado')"
@@ -43,9 +49,8 @@ function patchMatcherScript(script) {
     "const petRequest=/(dog|cat|pet|puppy|kitten)/.test(r);if(!petRequest&&/(dog|cat|pet|puppy|kitten|treat|chew|dental)/.test(t))return true;if(!coreValid(i,p))return true;"
   );
 
-  // The matcher has a lexical-hit gate after scoring. Teach that gate the same
-  // everyday equivalences, otherwise good candidates can score well and still
-  // be thrown away at the final confidence check.
+  // Keep the lexical confidence gate, but recognise everyday aliases when the
+  // request still contains them.
   const rankNeedle = "const ws=words(query(i)),needed=ws.length===1?1:Math.min(2,ws.length);let ranked=";
   const rankReplacement = "const ws=words(query(i)),needed=ws.length===1?1:Math.min(2,ws.length);const wordHit=(t,w)=>t.includes(w)||(w==='avocados'&&t.includes('avocado'))||(w==='avocado'&&t.includes('avocados'))||(w==='cheddar'&&t.includes('tasty'))||(w==='chocolate'&&t.includes('choc'))||(w==='muffins'&&t.includes('muffin'))||(w==='muffin'&&t.includes('muffins'));let ranked=";
   out = out.replace(rankNeedle, rankReplacement);
