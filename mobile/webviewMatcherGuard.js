@@ -7,46 +7,52 @@ function patchMatcherScript(script) {
   let out = String(script || '');
   if (!out.includes('Matching your groceries')) return out;
 
-  // Woolworths and everyday Australian grocery language do not always use the
-  // same words. Expand searches without weakening the product safety checks.
+  // Expand ordinary Woolworths search language using simple string targets.
+  // These deliberately avoid matching escaped regex source, which is fragile
+  // once the matcher has been turned into an injected JavaScript string.
   out = out.replace(
-    "if(/\\\\bavocados?\\\\b/.test(r))out.push('fresh avocado');",
-    "if(/\\\\bavocados?\\\\b/.test(r)){out.push('fresh avocado');out.push('avocado each');out.push('hass avocado')}"
+    "out.push('fresh avocado')",
+    "out.push('fresh avocado');out.push('avocado each');out.push('hass avocado')"
   );
   out = out.replace(
-    "if(r.includes('chicken breast'))out.push('chicken breast');",
-    "if(r.includes('chicken breast')){out.push('chicken breast');out.push('chicken breast fillets')}"
+    "out.push('cheddar cheese')",
+    "out.push('cheddar cheese');out.push('tasty cheese');out.push('cheese block')"
   );
   out = out.replace(
-    "if(r.includes('cheddar'))out.push('cheddar cheese');",
-    "if(r.includes('cheddar')){out.push('cheddar cheese');out.push('tasty cheese')}"
+    "out.push('chocolate muffins')",
+    "out.push('chocolate muffins');out.push('choc muffins');out.push('double choc muffins')"
   );
   out = out.replace(
-    "if(r.includes('chocolate muffin'))out.push('chocolate muffins');",
-    "if(r.includes('chocolate muffin')){out.push('chocolate muffins');out.push('choc muffins');out.push('double choc muffins')}"
-  );
-
-  // Treat common Woolworths wording as equivalent to the shopper's wording.
-  out = out.replace(
-    "if(r.includes('chocolate muffin'))return t.includes('muffin')&&t.includes('chocolate');",
-    "if(r.includes('chocolate muffin'))return t.includes('muffin')&&(t.includes('chocolate')||/\\\\bchoc\\\\b/.test(t));"
-  );
-  out = out.replace(
-    "if(r.includes('cheddar'))return t.includes('cheddar')&&t.includes('cheese');",
-    "if(r.includes('cheddar'))return (t.includes('cheddar')||t.includes('tasty'))&&t.includes('cheese');"
+    "out.push('chicken breast')",
+    "out.push('chicken breast');out.push('chicken breast fillets')"
   );
 
-  // Human grocery requests must never resolve into pet food/treats simply
-  // because the product title contains words such as chicken + breast.
-  const badNeedle = "const bad=(i,p)=>{const r=req(i),t=txt(p),u=unitText(i);if(!coreValid(i,p))return true;";
-  const badReplacement = "const bad=(i,p)=>{const r=req(i),t=txt(p),u=unitText(i);const petRequest=/(dog|cat|pet|puppy|kitten)/.test(r);if(!petRequest&&/(dog|cat|pet|puppy|kitten|treats?|chews?|dental chew|pet food)/.test(t))return true;if(!coreValid(i,p))return true;";
-  out = out.replace(badNeedle, badReplacement);
+  // Accept common retailer wording as equivalent to the shopper's wording.
+  out = out.replace(
+    "return t.includes('cheddar')&&t.includes('cheese')",
+    "return (t.includes('cheddar')||t.includes('tasty'))&&t.includes('cheese')"
+  );
+  out = out.replace(
+    "return t.includes('muffin')&&t.includes('chocolate')",
+    "return t.includes('muffin')&&(t.includes('chocolate')||t.includes('choc'))"
+  );
 
-  // The current matcher requires lexical hits as a confidence safeguard. Keep
-  // that safeguard, but recognise singular/plural and common grocery aliases.
-  const oldRank = "const ws=words(query(i)),needed=ws.length===1?1:Math.min(2,ws.length);let ranked=ps.map(p=>({p,s:score(i,p),hits:ws.filter(w=>txt(p).includes(w)).length,price:+(p.Price||999)}))";
-  const newRank = "const ws=words(query(i)),needed=ws.length===1?1:Math.min(2,ws.length);const wordHit=(t,w)=>t.includes(w)||(w==='avocados'&&t.includes('avocado'))||(w==='avocado'&&t.includes('avocados'))||(w==='muffins'&&t.includes('muffin'))||(w==='muffin'&&t.includes('muffins'))||(w==='chocolate'&&(t.includes('chocolate')||/\\\\bchoc\\\\b/.test(t)))||(w==='cheddar'&&(t.includes('cheddar')||t.includes('tasty')));let ranked=ps.map(p=>({p,s:score(i,p),hits:ws.filter(w=>wordHit(txt(p),w)).length,price:+(p.Price||999)}))";
-  out = out.replace(oldRank, newRank);
+  // Hard category safety: a normal grocery request must never become pet food.
+  out = out.replace(
+    "if(!coreValid(i,p))return true;",
+    "const petRequest=/(dog|cat|pet|puppy|kitten)/.test(r);if(!petRequest&&/(dog|cat|pet|puppy|kitten|treat|chew|dental)/.test(t))return true;if(!coreValid(i,p))return true;"
+  );
+
+  // The matcher has a lexical-hit gate after scoring. Teach that gate the same
+  // everyday equivalences, otherwise good candidates can score well and still
+  // be thrown away at the final confidence check.
+  const rankNeedle = "const ws=words(query(i)),needed=ws.length===1?1:Math.min(2,ws.length);let ranked=";
+  const rankReplacement = "const ws=words(query(i)),needed=ws.length===1?1:Math.min(2,ws.length);const wordHit=(t,w)=>t.includes(w)||(w==='avocados'&&t.includes('avocado'))||(w==='avocado'&&t.includes('avocados'))||(w==='cheddar'&&t.includes('tasty'))||(w==='chocolate'&&t.includes('choc'))||(w==='muffins'&&t.includes('muffin'))||(w==='muffin'&&t.includes('muffins'));let ranked=";
+  out = out.replace(rankNeedle, rankReplacement);
+  out = out.replace(
+    "hits:ws.filter(w=>txt(p).includes(w)).length",
+    "hits:ws.filter(w=>wordHit(txt(p),w)).length"
+  );
 
   return out;
 }
@@ -80,8 +86,7 @@ if (OriginalWebView && !OriginalWebView.__stuffMatcherGuardWrapped) {
       let parsed = null;
       try { parsed = JSON.parse(event?.nativeEvent?.data || '{}'); } catch (_) {}
 
-      // A product Stuff chose is not automatically a household preference.
-      // We will only build preference learning from an explicit/reliable signal.
+      // Do not treat Stuff's own first guess as a learned household preference.
       if (parsed?.type === 'WOOLIES_DONE' && props.onMessage) {
         const sanitized = { ...parsed, remembered: [] };
         props.onMessage({
