@@ -1,5 +1,5 @@
 import { registerRootComponent } from 'expo';
-import './webviewLearningPatch';
+import './webviewMatcherGuard';
 
 const AppRoot = require('./AppRoot').default;
 
